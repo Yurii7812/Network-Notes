@@ -202,8 +202,9 @@ class MarkdownTimezoneTests(unittest.TestCase):
         created = self.module.yaml_created_value(text)
         self.assertRegex(created, r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")
         self.assertEqual(datetime.fromisoformat(created).utcoffset(), datetime.now().astimezone().utcoffset())
+        self.assertNotRegex(text, r"(?im)^\s*updated\s*:")
 
-    def test_created_is_preserved_and_updated_uses_current_environment(self):
+    def test_created_is_preserved_and_updated_is_not_written(self):
         name = "alice__20260830120001.md"
         original_created = "2026-08-31T02:22:53+09:00"
         content = f"---\ncreator::alice\ncreated: {original_created}\nupdated: 2026-08-31T02:30:00+09:00\n---\n\n# Note\n"
@@ -211,8 +212,7 @@ class MarkdownTimezoneTests(unittest.TestCase):
         self.module.write_file(name, content)
         saved = self.module.read_file(name)
         self.assertEqual(self.module.yaml_created_value(saved), original_created)
-        updated = next(line.split(": ", 1)[1] for line in saved.splitlines() if line.startswith("updated: "))
-        self.assertEqual(datetime.fromisoformat(updated).utcoffset(), datetime.now().astimezone().utcoffset())
+        self.assertNotRegex(saved, r"(?im)^\s*updated\s*:")
 
     def test_different_offsets_compare_by_absolute_instant(self):
         earlier = "2026-08-31T02:22:53+09:00"
