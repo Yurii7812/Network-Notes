@@ -1656,7 +1656,7 @@ async function openFile(name,opts={}){
   current=name;currentData=d;relationSyncPending=false;if(opts.url!==false)syncNoteUrl(name,opts.replaceUrl===true);sectionSort.clear();edgeEditMode={outgoing:false,incoming:false};edgeExpandedGroups.outgoing.clear();edgeExpandedGroups.incoming.clear();edgeExpandAll={outgoing:false,incoming:false};selectedEdgeKeys.outgoing.clear();selectedEdgeKeys.incoming.clear();setEditorsFromRaw(d.content);dirty=false;updateFileTitle();updateAuthorBar();updateEditPermissions();updateContextAction();renderEditEdges();
   if(!d.can_edit)clearTopicWidgets();
   if(opts.record!==false)pushTrail(name,d.title);
-  await refreshFiles();setMobileSidebar(false);queueTopicWidgets();queueGraph();if(mode==='organize')renderOrganize();else if(mode==='source'){setTimeout(()=>{editor.refresh();editor.focus();},0)}else{setTimeout(()=>{bodyEditor.setSize(null,'auto');bodyEditor.refresh();bodyEditor.focus();},0)}
+  await refreshFiles();setMobileSidebar(false);queueTopicWidgets();queueGraph();if(mode==='organize')renderOrganize();else if(mode==='source'){setTimeout(()=>{if(mode==='source')focusSourceEditor()},0)}else{setTimeout(()=>{bodyEditor.setSize(null,'auto');bodyEditor.refresh();bodyEditor.focus();},0)}
 }
 function clearTopicWidgets(){for(const w of topicLineWidgets){try{w.clear()}catch(_){}}topicLineWidgets=[]}
 let topicWidgetTimer=null;
@@ -1694,13 +1694,33 @@ function setModeVisibility(next){
   $('organizeWrap').style.display=next==='organize'?'block':'none';
   updateViewModeToggle();updateVimUi();
 }
+function editorHasDomFocus(){
+  const a=document.activeElement;
+  return !!(a&&a.closest&&a.closest('#sourceWrap .CodeMirror'));
+}
+function focusSourceEditor(){
+  // The Source wrapper was just switched from display:none. CodeMirror needs a
+  // layout pass before .focus() sticks, and a stale focus() from a previous
+  // mode switch can steal it back, so refresh + focus across two frames and
+  // retry once if focus still did not land inside the editor.
+  const tryFocus=()=>{
+    if(mode!=='source')return;
+    try{editor.refresh();editor.focus();const inp=editor.getInputField&&editor.getInputField();if(inp)inp.focus({preventScroll:true});}catch(_){}
+    vimEnsureCursorVisible(editor,true);
+  };
+  tryFocus();
+  requestAnimationFrame(()=>{
+    tryFocus();
+    if(mode==='source'&&!editorHasDomFocus())setTimeout(tryFocus,40);
+  });
+}
 function applySourceInsertState(focus){
   // Source is the writing surface: entering it must accept ordinary keyboard/
   // IME input immediately. Runs synchronously so a slow or failed autosave can
   // never strand the editor in NORMAL, where `beforeinput` blocks every key.
   vimVisual=null;vimVisualAnchor=null;vimInputMode='insert';vimPendingCommand='';
   clearVimNormalLinkMarks();applyEditorReadOnly();updateVimUi();
-  if(focus&&mode==='source'){try{editor.focus();vimEnsureCursorVisible(editor,true)}catch(_){}}
+  if(focus&&mode==='source')focusSourceEditor();
 }
 function switchMode(next,opts={}){
   next=next==='source'?'source':'organize';
@@ -1733,19 +1753,19 @@ function switchMode(next,opts={}){
     if(enterInsert)applySourceInsertState(false);
     if(next===mode){
       setModeVisibility(next);
-      if(next==='source')setTimeout(()=>{editor.refresh();if(vimInputMode==='normal'&&!vimVisual)refreshVimNormalLinks();else clearVimNormalLinkMarks();editor.focus();vimEnsureCursorVisible(editor,true)},0);
+      if(next==='source')setTimeout(()=>{if(mode!=='source')return;if(vimInputMode==='normal'&&!vimVisual)refreshVimNormalLinks();else clearVimNormalLinkMarks();focusSourceEditor()},0);
       else if(forceNormal)refreshVimNormalLinks();
       return;
     }
     mode=next;setModeVisibility(next);organizeLinkIndex=-1;organizeSectionIndex=-1;
     if(next==='organize'){
       vimVisual=null;vimVisualAnchor=null;
-      clearVimNormalLinkMarks();renderOrganize();$('organizeView').tabIndex=-1;setTimeout(()=>$('organizeView').focus({preventScroll:true}),0);
+      clearVimNormalLinkMarks();renderOrganize();$('organizeView').tabIndex=-1;setTimeout(()=>{if(mode==='organize')$('organizeView').focus({preventScroll:true})},0);
     }else{
       setTimeout(()=>{
-        editor.refresh();
+        if(mode!=='source')return;
         if(vimInputMode==='normal'&&!vimVisual)refreshVimNormalLinks();else clearVimNormalLinkMarks();
-        editor.focus();vimEnsureCursorVisible(editor,true);
+        focusSourceEditor();
       },0);
     }
   })().catch(e=>{status(e?.message||'表示切替に失敗しました');throw e}).finally(()=>{modeSwitchPromise=null});
