@@ -6016,6 +6016,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        # The whole SPA (HTML + inline CSS/JS) and the vendored /static assets are
+        # served from here. Without this, browsers heuristically cache them and a
+        # plain reload keeps running an old build after the app is updated.
+        self.send_header("Cache-Control", "no-cache, must-revalidate")
         self.end_headers()
         self.wfile.write(data)
 
