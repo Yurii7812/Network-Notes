@@ -60,6 +60,30 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("ensure();\n  // Collapsed link marks", src)
         self.assertIn("vimScrollRaf=requestAnimationFrame(ensure)", src)
 
+    def test_local_mode_uses_an_implicit_offline_workspace(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn("if LOCAL_MODE:\n            return local_workspace_user(session_user)", src)
+        self.assertIn("Localはログインなしで完全に使えます", src)
+        self.assertIn("$('uploadToggleWrap').style.display='none'", src)
+
+    def test_network_transfers_are_explicit_full_replacements(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn('ネットからダウンロード', src)
+        self.assertIn('ネットへアップロード', src)
+        self.assertIn('include_all=True', src)
+        self.assertIn('"mode":"replace"', src)
+        self.assertIn('previous |= set(user_files(uid))', src)
+        self.assertIn('for name in user_files(uid):', src)
+        self.assertIn('if media_folder.exists(): shutil.rmtree(media_folder)', src)
+        self.assertIn("# Network transfer is always an explicit user action.", src)
+        self.assertNotIn("NetworkNotes Local auto-upload:", src)
+
+    def test_local_web_logout_forgets_only_connection_credentials(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn('id="disconnectWebBtn"', src)
+        self.assertIn('if u.path == "/api/local-disconnect":', src)
+        self.assertIn('cfg.update({"token":"","remote_username":"","remote_user_id":0,', src)
+
 
 if __name__ == "__main__":
     unittest.main()
