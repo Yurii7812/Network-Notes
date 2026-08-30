@@ -121,9 +121,12 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertNotIn("vimScrollRaf", src)
         self.assertIn(".CodeMirror-scroll{scroll-behavior:auto}", src)
         self.assertNotIn(".CodeMirror-scroll{scroll-behavior:smooth}", src)
-        # Keep the caret clear of the viewport edge (vim scrolloff equivalent),
-        # otherwise CodeMirror pins it flush against the bottom while typing.
-        self.assertIn("cursorScrollMargin:72,", src)
+        # cursorScrollMargin must be 0: the caret moves freely anywhere in the
+        # visible area, the view scrolls only when the caret is pushed past an
+        # edge, and reversing direction stops the follow (plain Vim / Notepad).
+        # A non-zero margin scrolls early and keeps following past a reversal.
+        self.assertIn("cursorScrollMargin:0,", src)
+        self.assertNotIn("cursorScrollMargin:72", src)
         # None of the vim helpers force an extra scrollIntoView after setCursor.
         self.assertNotIn("cm.scrollIntoView(cm.getCursor(),80)", src)
         self.assertNotIn("editor.scrollIntoView(editor.getCursor(),80)", src)

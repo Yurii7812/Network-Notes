@@ -725,10 +725,13 @@ const editor=CodeMirror.fromTextArea($('source'),{
   styleActiveLine:false,
   indentUnit:2,
   tabSize:2,
-  // Keep the caret ~3 lines clear of the top/bottom edge when CodeMirror
-  // scrolls it into view (like vim's scrolloff). Without this the caret sits
-  // flush against the edge and the line you are typing is hard to read.
-  cursorScrollMargin:72,
+  // cursorScrollMargin stays 0 (the default): the caret may move to any line
+  // that is already visible without moving the viewport, and the view only
+  // scrolls, one line at a time, when the caret is pushed past the top or
+  // bottom edge — plain Vim / Notepad behaviour. A non-zero margin would
+  // start scrolling early and keep scrolling after the caret reverses
+  // direction, which is exactly what we do not want here.
+  cursorScrollMargin:0,
   // Modal editing is CodeMirror's official vim keymap. It owns key handling,
   // IME, selection and cursor-follow scrolling.
   keyMap:'vim',
