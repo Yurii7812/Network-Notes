@@ -51,6 +51,13 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("vimInputMode='insert';vimPendingCommand=''", src)
         self.assertNotIn("toggleViewMode({forceNormal:true})", src)
 
+    def test_insert_tab_link_navigation_keeps_cursor_visible(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn("if(vimAllLinks(cm).length){", src)
+        self.assertIn("vimJumpLink(cm,e.shiftKey?-1:1)", src)
+        self.assertIn("cm.scrollIntoView(cm.getCursor()", src)
+        self.assertIn("vimScrollRaf=requestAnimationFrame(ensure)", src)
+
 
 if __name__ == "__main__":
     unittest.main()

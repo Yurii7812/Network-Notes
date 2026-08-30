@@ -670,7 +670,11 @@ function refreshVimNormalLinks(){
 let vimScrollRaf=0;
 function vimEnsureCursorVisible(cm,center=false){
   if(vimScrollRaf)cancelAnimationFrame(vimScrollRaf);
-  vimScrollRaf=requestAnimationFrame(()=>{
+  // Ask CodeMirror to reveal the caret immediately. Link marks can change the
+  // wrapped line geometry just after a Tab jump, so verify the position again
+  // on two animation frames instead of relying on one smooth scroll.
+  try{cm.scrollIntoView(cm.getCursor(),center?Math.max(80,Math.floor(cm.getScrollInfo().clientHeight*.35)):72)}catch(_){}
+  const ensure=()=>{
     vimScrollRaf=0;
     try{
       const cur=cm.getCursor(),info=cm.getScrollInfo(),c=cm.charCoords(cur,'local');
@@ -681,9 +685,13 @@ function vimEnsureCursorVisible(cm,center=false){
       else if(c.bottom>info.top+info.clientHeight-bottomSafe)target=Math.max(0,c.bottom-info.clientHeight+bottomSafe);
       if(target===null||Math.abs(target-info.top)<2)return;
       const scroller=cm.getScrollerElement();
-      if(scroller&&typeof scroller.scrollTo==='function')scroller.scrollTo({top:target,behavior:'smooth'});
+      if(scroller&&typeof scroller.scrollTo==='function')scroller.scrollTo({top:target,behavior:'auto'});
       else cm.scrollTo(null,target);
     }catch(_){}
+  };
+  vimScrollRaf=requestAnimationFrame(()=>{
+    ensure();
+    vimScrollRaf=requestAnimationFrame(ensure);
   });
 }
 function vimMove(cm,command){cm.execCommand(command);vimEnsureCursorVisible(cm)}
@@ -1777,7 +1785,12 @@ function handleVimKey(cm,e,viewName){
       setVimInputMode('normal',cm);
       return;
     }
-    if(e.key==='Tab'&&tableCellMove(cm,e.shiftKey?-1:1)){e.preventDefault();e.stopPropagation();return}
+    if(e.key==='Tab'){
+      if(tableCellMove(cm,e.shiftKey?-1:1)){e.preventDefault();e.stopPropagation();return}
+      // In INSERT, Tab follows the same link-to-link navigation as NORMAL.
+      // Leave ordinary Tab behavior intact when the document has no links.
+      if(vimAllLinks(cm).length){e.preventDefault();e.stopPropagation();vimJumpLink(cm,e.shiftKey?-1:1);return}
+    }
     return;
   }
   // NORMAL mode is available even on somebody else's read-only note.
