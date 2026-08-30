@@ -40,6 +40,7 @@ MEDIA_DIR = DATA_DIR / "media"
 AVATAR_DIR = MEDIA_DIR / "avatars"
 DOWNLOADS_DIR = APP_DIR / "downloads"
 LOCAL_CONFIG_FILE = DATA_DIR / "local_config.json"
+LOCAL_PACKAGE_MARKER = ROOT_DIR / ".networknotes-local"
 LOCAL_MODE = False
 LOCAL_RELEASE_VERSION = 86
 LOCAL_RELEASE_PLATFORMS = ("Windows", "macOS", "Linux", "Portable")
@@ -476,7 +477,7 @@ const GUEST_PROFILE={id:null,username:'guest',display_name:'ゲスト',bio:'',av
 let runtimeLocalMode=false;
 let profile={...GUEST_PROFILE};
 let pendingAuthAction=null;
-function isGuest(){return !profile?.id}
+function isGuest(){return !runtimeLocalMode&&!profile?.id}
 let activeSocialView='network';
 let socialPollTimer=null;
 let navigationTrail=[];
@@ -2375,7 +2376,7 @@ async function boot(){
     try{await openFile(requested||profile.index_file,{record:false,replaceUrl:true})}
     catch(_){await openFile(profile.index_file,{record:false,replaceUrl:true})}
     navigationTrail=[];pushTrail(current,currentData.title);showNetwork();
-  }catch(e){if(profile?.local_mode)showAuth(e.message);else{status(e.message);await enterGuestMode(false)}}
+  }catch(e){status(e.message,{kind:'error'});if(!runtimeLocalMode)await enterGuestMode(false)}
 }
 
 
@@ -2420,7 +2421,7 @@ new ResizeObserver(()=>queueGraph(120)).observe($('graphWrap'));
 $('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();const relation=selectedRelation==='__custom__'?$('customRelation').value.trim():selectedRelation;if(!title||!relation)return;if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
 window.addEventListener('beforeunload',()=>{if(!isGuest()&&(dirty||relationSyncPending)){const blob=new Blob([JSON.stringify({name:current,content:editorText(),voter:voterId,commit_relations:true,client_save_session:saveClientSession,client_seq:editRevision})],{type:'application/json'});navigator.sendBeacon('/api/file',blob)}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flushAutosave().catch(()=>{})});
-boot().catch(e=>showAuth(e.message));
+boot().catch(e=>{status(e.message,{kind:'error'});if(!runtimeLocalMode)showAuth(e.message)});
 </script>
 </body>
 </html>
@@ -5820,6 +5821,7 @@ if errorlevel 1 python app\\app.py --local
             info.external_attr=(mode & 0xFFFF)<<16
             z.writestr(info,data.encode("utf-8") if isinstance(data,str) else data)
         add("README.txt",readme)
+        add(".networknotes-local","NetworkNotes Local package\n")
         add("data/",b"",0o755)
         add("app/app.py",Path(__file__).read_bytes())
         for asset in sorted((APP_DIR/"static").iterdir()):
@@ -6810,7 +6812,9 @@ def main():
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--local", action="store_true", help="run as the offline/local desktop edition")
     args = parser.parse_args()
-    LOCAL_MODE = bool(args.local)
+    # Generated Local packages carry a marker so running app/app.py directly
+    # remains account-free even when the launcher is bypassed.
+    LOCAL_MODE = bool(args.local or LOCAL_PACKAGE_MARKER.is_file())
     init_db()
     ensure_vault()
     migrate_https_asset_urls()

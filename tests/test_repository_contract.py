@@ -98,6 +98,13 @@ class RepositoryContractTests(unittest.TestCase):
             spec = importlib.util.spec_from_file_location("networknotes_distribution_test", app_dir / "app.py")
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+            module.LOCAL_MODE = True
+            module.init_db()
+            handler = object.__new__(module.Handler)
+            handler.cookie_token = lambda: None
+            local_user = handler.current_user()
+            self.assertEqual(local_user["username"], "local")
+            self.assertTrue((Path(tmp) / "data" / "vault" / "local__Index.md").is_file())
             expected = APP.read_bytes()
             for platform in ("Linux", "macOS", "Windows", "Portable"):
                 with self.subTest(platform=platform):
@@ -105,6 +112,7 @@ class RepositoryContractTests(unittest.TestCase):
                     with zipfile.ZipFile(io.BytesIO(raw)) as bundle:
                         root = "NetworkNotes-Local-v86/"
                         self.assertEqual(bundle.read(root + "app/app.py"), expected)
+                        self.assertEqual(bundle.read(root + ".networknotes-local"), b"NetworkNotes Local package\n")
                         launcher = bundle.read(root + ("Start-NetworkNotes.bat" if platform == "Windows" else "Start-NetworkNotes.sh"))
                         self.assertIn(b"--local", launcher)
                         data_files = [name for name in bundle.namelist() if name.startswith(root + "data/") and name != root + "data/"]
@@ -114,6 +122,13 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(list((ROOT / "downloads").glob("NetworkNotes-Local-v86-*.zip")), [])
         src = APP.read_text(encoding="utf-8")
         self.assertIn("return self.file_response(build_local_distribution(platform),name", src)
+
+    def test_packaged_app_is_local_even_when_launcher_is_bypassed(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn('LOCAL_PACKAGE_MARKER = ROOT_DIR / ".networknotes-local"', src)
+        self.assertIn("LOCAL_MODE = bool(args.local or LOCAL_PACKAGE_MARKER.is_file())", src)
+        self.assertIn("function isGuest(){return !runtimeLocalMode&&!profile?.id}", src)
+        self.assertNotIn("if(profile?.local_mode)showAuth(e.message)", src)
 
 
 
