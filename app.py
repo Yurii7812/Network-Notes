@@ -3220,7 +3220,7 @@ def ensure_created_frontmatter_all_notes() -> None:
 def new_note_markdown(filename: str, title: str) -> str:
     created = local_now_iso()
     creator = inferred_creator_username(filename)
-    return f"---\ncreator::{creator}\ncreated: {created}\n---\n\n# {title}\n"
+    return f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\n---\n\n# {title}\n"
 
 
 def new_timestamp_filename() -> str:
@@ -3993,7 +3993,7 @@ def ensure_community_index(community_id: int) -> str:
         creator=username_for_user_id(int(row["owner_user_id"])); created=local_now_iso()
         legacy=str(row["index_markdown"] or "# Index\n").strip()
         if not re.search(r"(?m)^#\s+",legacy): legacy="# Index\n\n"+legacy
-        atomic_text_write(path, f"---\ncreator::{creator}\ncreated: {created}\n---\n\n{legacy.rstrip()}\n\n---\n")
+        atomic_text_write(path, f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\n---\n\n{legacy.rstrip()}\n\n---\n")
     return name
 
 
@@ -4060,7 +4060,7 @@ def ensure_user_index(user_id: int) -> str:
     if not p.exists():
         created = local_now_iso()
         creator = username_for_user_id(user_id)
-        atomic_text_write(p, f"---\ncreator::{creator}\ncreated: {created}\n---\n\n# Index\n\n---\n")
+        atomic_text_write(p, f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\n---\n\n# Index\n\n---\n")
     return name
 
 
