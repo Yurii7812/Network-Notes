@@ -1660,6 +1660,7 @@ function setModeVisibility(next){
 function switchMode(next,opts={}){
   next=next==='source'?'source':'organize';
   const forceNormal=!!opts.forceNormal;
+  const enterInsert=!!opts.enterInsert&&next==='source';
   if(modeSwitchPromise)return modeSwitchPromise;
   modeSwitchPromise=(async()=>{
     await waitForImeIdle();
@@ -1674,6 +1675,12 @@ function switchMode(next,opts={}){
       if(mode==='source'&&caret){collapseVimSelection(editor,caret)}
     }
     await flushAutosave(true);
+    // Source is the writing surface. Explicit edit transitions should accept
+    // ordinary keyboard/IME input immediately, without requiring a Vim `i`.
+    if(enterInsert){
+      vimInputMode='insert';vimPendingCommand='';
+      clearVimNormalLinkMarks();applyEditorReadOnly();updateVimUi();
+    }
     if(next===mode){setModeVisibility(next);if(forceNormal&&next==='source')refreshVimNormalLinks();return}
     mode=next;setModeVisibility(next);organizeLinkIndex=-1;organizeSectionIndex=-1;
     if(next==='organize'){
@@ -1688,7 +1695,10 @@ function switchMode(next,opts={}){
   })().catch(e=>{status(e?.message||'表示切替に失敗しました');throw e}).finally(()=>{modeSwitchPromise=null});
   return modeSwitchPromise;
 }
-function toggleViewMode(opts={}){return switchMode(mode==='source'?'organize':'source',opts)}
+function toggleViewMode(opts={}){
+  const next=mode==='source'?'organize':'source';
+  return switchMode(next,next==='source'?{enterInsert:true,...opts}:opts);
+}
 
 function vimAllLinks(cm){
   const out=[];const re=/\[((?:\\.|[^\]\\])+)]\(([^)\s]+\.md)(?:\s+"label-fixed")?\)/g;
@@ -1850,9 +1860,9 @@ window.addEventListener('keydown',e=>{
     const isTextControl=['INPUT','TEXTAREA','SELECT'].includes(active?.tagName||'')||active?.isContentEditable;
     if(isTextControl&&!inCodeMirror)return;
     e.preventDefault();e.stopPropagation();
-    // Ctrl+E always leaves the editor in NORMAL, so opening Source never starts
-    // in accidental INSERT mode. This also commits pending edits first.
-    toggleViewMode({forceNormal:true}).catch(console.error);return;
+    // Ctrl+E opens Source ready for normal typing. Esc remains available for
+    // users who explicitly want Vim NORMAL mode.
+    toggleViewMode().catch(console.error);return;
   }
 },true);
 window.addEventListener('keydown',e=>{

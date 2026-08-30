@@ -44,6 +44,13 @@ class RepositoryContractTests(unittest.TestCase):
         src = APP.read_text(encoding="utf-8")
         self.assertIn("status('保存エラー: '+(e?.message||''),{kind:'error'})", src)
 
+    def test_ctrl_e_opens_source_in_insert_mode(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn("next==='source'?{enterInsert:true,...opts}:opts", src)
+        self.assertIn("if(enterInsert){", src)
+        self.assertIn("vimInputMode='insert';vimPendingCommand=''", src)
+        self.assertNotIn("toggleViewMode({forceNormal:true})", src)
+
 
 if __name__ == "__main__":
     unittest.main()
