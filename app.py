@@ -278,7 +278,10 @@ header{
   #headerRight .profileBtn{padding:4px 5px;max-width:none}
   #headerRight #profileHandle{display:none}
   #headerRight #logoutBtn{font-size:9px!important;padding:4px 5px!important}
-  #layout{height:calc(100vh - var(--nn-header-h));padding-bottom:48px}
+  /* The desktop rule above reserves a fixed graph column. The graph itself is
+     hidden on mobile, but an explicit single-column track is still required;
+     otherwise that empty track squeezes the note to only a few pixels. */
+  #layout{grid-template-columns:minmax(0,1fr);height:calc(100vh - var(--nn-header-h));padding-bottom:48px}
   #sidebar{top:var(--nn-header-h)}
   body.mobileSidebarOpen .mobileOverlay{inset:var(--nn-header-h) 0 48px}
   #socialView{height:calc(100vh - var(--nn-header-h));padding-bottom:48px}
@@ -344,17 +347,17 @@ header{
 @media(max-width:700px){.mainNavBtn{min-width:82px;font-size:10px;padding:5px 7px}.mainNavMenu{right:0;min-width:155px}}
 /* v74 navigation, profile/community sections, Markdown tasks/tables */
 .navMenu{position:relative;flex:0 0 auto}.navMenuBtn{font-size:10.5px;padding:5px 8px}#headerRight #topNav.navMenuPanel{position:absolute;left:auto;right:0;top:calc(100% + 6px);bottom:auto;z-index:1800;display:grid;min-width:150px;width:auto;max-width:none;overflow:visible;padding:5px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.14)}.navMenuPanel[hidden]{display:none}.navMenuPanel button{border:0;border-radius:7px;text-align:left;background:#fff;font-size:11px;padding:7px 9px}.navMenuPanel button:hover,.navMenuPanel button.active{background:#e5e5e5}
-#mobileNodesBtn{display:none!important}.profileSections{display:grid;gap:18px}.profileSection{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fff}.profileSection>h3{margin:0 0 10px;font-size:15px}.profileQuickSearch{display:flex;gap:8px}.profileQuickSearch input{flex:1}.profileQuickSearch button{flex:0 0 auto}.profileIndexBody{font-size:13px}.sectionFeed{display:grid;gap:9px}.sectionFeed .feedCard{padding:12px}.communityIndexActions{display:flex;gap:7px;justify-content:flex-end;margin-bottom:8px}
+#mobileNodesBtn{display:none}.profileSections{display:grid;gap:18px}.profileSection{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fff}.profileSection>h3{margin:0 0 10px;font-size:15px}.profileQuickSearch{display:flex;gap:8px}.profileQuickSearch input{flex:1}.profileQuickSearch button{flex:0 0 auto}.profileIndexBody{font-size:13px}.sectionFeed{display:grid;gap:9px}.sectionFeed .feedCard{padding:12px}.communityIndexActions{display:flex;gap:7px;justify-content:flex-end;margin-bottom:8px}
 .taskItem{display:flex;align-items:flex-start;gap:8px;line-height:1.55;margin:.28em 0}.taskItem input{width:17px;height:17px;margin-top:.18em;accent-color:#000;flex:0 0 auto}.taskItem.done .taskText{text-decoration:line-through;color:var(--muted)}.taskItem input:disabled{opacity:.65}.mdTableWrap{overflow-x:auto;margin:10px 0}.mdTable{border-collapse:collapse;width:max-content;min-width:min(100%,560px);font-size:13px}.mdTable th,.mdTable td{border:1px solid var(--border);padding:7px 9px;text-align:left;vertical-align:top}.mdTable th{background:#f6f6f6;font-weight:750}.mdTable code{white-space:nowrap}
 #organizeWrap{scroll-behavior:smooth}.CodeMirror-scroll{scroll-behavior:smooth}
-@media(max-width:700px){#headerRight #topNav.navMenuPanel{position:fixed;left:auto;right:8px;top:52px;bottom:auto;width:170px;padding:5px;justify-content:stretch}.profileQuickSearch{display:grid}}
+@media(max-width:700px){#mobileNodesBtn{display:inline-flex}body.mobileSidebarOpen #sidebar{display:block!important}#headerRight #topNav.navMenuPanel{position:fixed;left:auto;right:8px;top:52px;bottom:auto;width:170px;padding:5px;justify-content:stretch}.profileQuickSearch{display:grid}}
 #headerRight{overflow:visible!important;position:relative;z-index:4000}
 </style>
 </head>
 <body>
 <div id="authGate" class="authGate hidden"><form id="authForm" class="authCard"><h1>Network Notes</h1><p id="authPrompt">この操作にはログインまたは登録が必要です</p><div id="localSyncAuth" class="localSyncPrimary" hidden><h3>Webアカウントに接続</h3><div class="profileHint">Localはアカウントなしで使えます。Webへ共有・同期するときだけ、Web版の既存アカウントでログインするか、新しいWebアカウントを作成します。WebパスワードはLocalには保存しません。</div><label>Webサーバー<input id="authSyncServer" value="https://network-notes.duckdns.org"></label><label>Webユーザー名<input id="authWebUsername" autocomplete="username" maxlength="32" placeholder="ユーザー名"></label><label>Webパスワード<input id="authWebPassword" type="password" autocomplete="current-password" placeholder="8文字以上"></label><div class="authActions"><button id="authWebLoginBtn" type="button">既存アカウントでログイン</button><button id="authWebRegisterBtn" type="button">Webアカウントを作成</button><button id="authOpenWebBtn" type="button">Web版を開く</button></div><details class="localSyncSecondary"><summary>同期キーで接続する</summary><label>ローカル同期キー<input id="authSyncToken" type="password" autocomplete="off" placeholder="nn_... の同期キー"></label><div class="authActions"><button id="authSyncConnectBtn" type="button">同期キーで接続</button></div></details></div><div id="localPasswordAuth"><label>ユーザー名<input id="authUsername" autocomplete="username" maxlength="32" /></label><label>パスワード<input id="authPassword" type="password" autocomplete="current-password" minlength="8" /></label><div class="authActions"><button id="loginBtn" type="submit">ログイン</button><button id="registerBtn" type="button">新規登録</button></div></div><div class="authActions"><button id="authCancelBtn" type="button">キャンセル</button></div><div id="authError" class="authError"></div></form></div>
 <header>
-  <div id="headerBrand"><strong>Network Notes</strong><button id="mobileNodesBtn" class="mobileOnly" type="button">Nodes</button></div>
+  <div id="headerBrand"><strong>Network Notes</strong><button id="mobileNodesBtn" class="mobileOnly" type="button" aria-controls="sidebar" aria-expanded="false">ノート</button></div>
   <div id="headerCenter">
     <div id="authorBar"><span id="noteAuthorAvatar"></span><div class="authorText"><span id="noteAuthorName" class="authorName"></span><span id="noteAuthorHandle" class="authorHandle"></span></div><div class="authorMeta"><button id="likeBtn" type="button">♡ 0</button><button id="reportNoteBtn" type="button" style="display:none">通報</button></div></div>
     <div id="docBar">
@@ -1631,7 +1634,7 @@ async function openFile(name,opts={}){
   current=name;currentData=d;relationSyncPending=false;if(opts.url!==false)syncNoteUrl(name,opts.replaceUrl===true);sectionSort.clear();edgeEditMode={outgoing:false,incoming:false};edgeExpandedGroups.outgoing.clear();edgeExpandedGroups.incoming.clear();edgeExpandAll={outgoing:false,incoming:false};selectedEdgeKeys.outgoing.clear();selectedEdgeKeys.incoming.clear();setEditorsFromRaw(d.content);dirty=false;updateFileTitle();updateAuthorBar();updateEditPermissions();updateContextAction();renderEditEdges();
   if(!d.can_edit)clearTopicWidgets();
   if(opts.record!==false)pushTrail(name,d.title);
-  await refreshFiles();queueTopicWidgets();queueGraph();if(mode==='organize')renderOrganize();else if(mode==='source'){setTimeout(()=>{editor.refresh();editor.focus();},0)}else{setTimeout(()=>{bodyEditor.setSize(null,'auto');bodyEditor.refresh();bodyEditor.focus();},0)}
+  await refreshFiles();setMobileSidebar(false);queueTopicWidgets();queueGraph();if(mode==='organize')renderOrganize();else if(mode==='source'){setTimeout(()=>{editor.refresh();editor.focus();},0)}else{setTimeout(()=>{bodyEditor.setSize(null,'auto');bodyEditor.refresh();bodyEditor.focus();},0)}
 }
 function clearTopicWidgets(){for(const w of topicLineWidgets){try{w.clear()}catch(_){}}topicLineWidgets=[]}
 let topicWidgetTimer=null;
@@ -2409,7 +2412,13 @@ $('registerBtn').onclick=()=>{const username=$('authUsername').value.trim(),pass
 $('registerSavedCheck').onchange=()=>{$('registerConfirmBtn').disabled=!$('registerSavedCheck').checked};
 $('registerCopyBtn').onclick=async()=>{try{await navigator.clipboard.writeText($('registerPasswordPreview').value);$('registerCopyBtn').textContent='コピーしました';$('registerSavedCheck').checked=true;$('registerConfirmBtn').disabled=false}catch(_){$('registerPasswordPreview').focus();$('registerPasswordPreview').select();status('コピーできない場合は手動でコピーしてください')}};
 $('registerConfirmBtn').onclick=async()=>{if(!pendingRegistration||!$('registerSavedCheck').checked)return;$('registerConfirmBtn').disabled=true;try{const d=await api('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pendingRegistration)});pendingRegistration=null;$('registerSaveDialog').close();await finishAuthentication(d)}catch(err){$('registerConfirmBtn').disabled=false;$('authError').textContent=err.message;$('registerSaveDialog').close()}};
-if($('mobileNodesBtn'))$('mobileNodesBtn').onclick=()=>{};if($('mobileOverlay'))$('mobileOverlay').onclick=()=>document.body.classList.remove('mobileSidebarOpen');
+function setMobileSidebar(open){
+  const expanded=!!open;document.body.classList.toggle('mobileSidebarOpen',expanded);
+  $('mobileNodesBtn')?.setAttribute('aria-expanded',expanded?'true':'false');
+  $('sidebar')?.setAttribute('aria-hidden',expanded?'false':'true');
+}
+if($('mobileNodesBtn'))$('mobileNodesBtn').onclick=()=>setMobileSidebar(!document.body.classList.contains('mobileSidebarOpen'));
+if($('mobileOverlay'))$('mobileOverlay').onclick=()=>setMobileSidebar(false);
 $('graphLimit').oninput=()=>{$('graphLimitValue').textContent=$('graphLimit').value;queueGraph(120)};
 $('graphDepth').oninput=()=>{$('graphDepthValue').textContent=$('graphDepth').value;queueGraph(120)};
 $('graphSpacing').oninput=()=>{$('graphSpacingValue').textContent=$('graphSpacing').value;queueGraph(30)};
