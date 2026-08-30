@@ -353,7 +353,12 @@ header{
 .navMenu{position:relative;flex:0 0 auto}.navMenuBtn{font-size:10.5px;padding:5px 8px}#headerRight #topNav.navMenuPanel{position:absolute;left:auto;right:0;top:calc(100% + 6px);bottom:auto;z-index:1800;display:grid;min-width:150px;width:auto;max-width:none;overflow:visible;padding:5px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.14)}.navMenuPanel[hidden]{display:none}.navMenuPanel button{border:0;border-radius:7px;text-align:left;background:#fff;font-size:11px;padding:7px 9px}.navMenuPanel button:hover,.navMenuPanel button.active{background:#e5e5e5}
 #mobileNodesBtn{display:none}.profileSections{display:grid;gap:18px}.profileSection{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fff}.profileSection>h3{margin:0 0 10px;font-size:15px}.profileQuickSearch{display:flex;gap:8px}.profileQuickSearch input{flex:1}.profileQuickSearch button{flex:0 0 auto}.profileIndexBody{font-size:13px}.sectionFeed{display:grid;gap:9px}.sectionFeed .feedCard{padding:12px}.communityIndexActions{display:flex;gap:7px;justify-content:flex-end;margin-bottom:8px}
 .taskItem{display:flex;align-items:flex-start;gap:8px;line-height:1.55;margin:.28em 0}.taskItem input{width:17px;height:17px;margin-top:.18em;accent-color:#000;flex:0 0 auto}.taskItem.done .taskText{text-decoration:line-through;color:var(--muted)}.taskItem input:disabled{opacity:.65}.mdTableWrap{overflow-x:auto;margin:10px 0}.mdTable{border-collapse:collapse;width:max-content;min-width:min(100%,560px);font-size:13px}.mdTable th,.mdTable td{border:1px solid var(--border);padding:7px 9px;text-align:left;vertical-align:top}.mdTable th{background:#f6f6f6;font-weight:750}.mdTable code{white-space:nowrap}
-#organizeWrap{scroll-behavior:smooth}.CodeMirror-scroll{scroll-behavior:smooth}
+#organizeWrap{scroll-behavior:smooth}
+/* Never put scroll-behavior:smooth on the CodeMirror scroller: CodeMirror sets
+   scrollTop synchronously on every cursor move and reads it back immediately to
+   decide which lines to render. An animated scroll makes those reads land
+   mid-animation, so the viewport bounces and lines jump while typing. */
+.CodeMirror-scroll{scroll-behavior:auto}
 @media(max-width:700px){#mobileNodesBtn{display:inline-flex}body.mobileSidebarOpen #sidebar{display:block!important}#headerRight #topNav.navMenuPanel{position:fixed;left:auto;right:8px;top:52px;bottom:auto;width:170px;padding:5px;justify-content:stretch}.profileQuickSearch{display:grid}}
 #headerRight{overflow:visible!important;position:relative;z-index:4000}
 </style>
@@ -760,16 +765,25 @@ const bodyEditor=CodeMirror.fromTextArea($('bodySource'),{
 bodyEditor.setSize(null,'auto');
 bindImeTracking(editor);bindImeTracking(bodyEditor);
 let sourceFrontmatterStyledLines=[];
+let sourceFrontmatterStyledKey='';
 function refreshSourceFrontmatterStyle(){
   if(typeof editor!=='undefined'&&imeComposing.has(editor))return;
+  let closing=-1;
+  if(editor.lineCount()>=1&&String(editor.getLine(0)||'').trim()==='---'){
+    const limit=Math.min(editor.lineCount(),80);
+    for(let i=1;i<limit;i++){if(String(editor.getLine(i)||'').trim()==='---'){closing=i;break}}
+  }
+  // Re-toggling identical line classes on every keystroke forces a measure and
+  // makes the viewport flicker. Skip when the styled range is unchanged AND the
+  // classes are still actually applied (setValue silently drops line classes).
+  let stillApplied=true;
+  try{stillApplied=closing<0?true:/\bnnFrontmatterLine\b/.test(editor.lineInfo(0)?.wrapClass||'');}catch(_){}
+  if(String(closing)===sourceFrontmatterStyledKey&&stillApplied)return;
+  sourceFrontmatterStyledKey=String(closing);
   for(const line of sourceFrontmatterStyledLines){
     try{editor.removeLineClass(line,'wrap','nnFrontmatterLine')}catch(_){}
   }
   sourceFrontmatterStyledLines=[];
-  if(editor.lineCount()<1||String(editor.getLine(0)||'').trim()!=='---')return;
-  let closing=-1;
-  const limit=Math.min(editor.lineCount(),80);
-  for(let i=1;i<limit;i++){if(String(editor.getLine(i)||'').trim()==='---'){closing=i;break}}
   if(closing<0)return;
   for(let i=0;i<=closing;i++){editor.addLineClass(i,'wrap','nnFrontmatterLine');sourceFrontmatterStyledLines.push(i)}
 }
@@ -1058,16 +1072,26 @@ function sourceProjectionWithBoxEdges(content){
   return result;
 }
 let sourceAutoEdgeLines=new Set();
+let sourceAutoEdgeKey='';
 function refreshSourceAutoEdgeStyle(){
-  sourceAutoEdgeLines.forEach(line=>{try{editor.removeLineClass(line,'wrap','nnAutoEdgeLine')}catch(_){}});
-  sourceAutoEdgeLines=new Set();
+  const next=[];
   let inside=false;
   for(let i=0;i<editor.lineCount();i++){
     const t=String(editor.getLine(i)||'').trim();
     if(t==='<!-- edges:auto:start -->')inside=true;
-    if(inside){sourceAutoEdgeLines.add(i);try{editor.addLineClass(i,'wrap','nnAutoEdgeLine')}catch(_){}}
+    if(inside)next.push(i);
     if(t==='<!-- edges:auto:end -->')inside=false;
   }
+  // Same idle-typing guard as the frontmatter styler: only touch the DOM when
+  // the auto-edge line range actually moved (or setValue dropped the classes).
+  const key=next.join(',');
+  let stillApplied=true;
+  try{stillApplied=!next.length||/\bnnAutoEdgeLine\b/.test(editor.lineInfo(next[0])?.wrapClass||'');}catch(_){}
+  if(key===sourceAutoEdgeKey&&stillApplied)return;
+  sourceAutoEdgeKey=key;
+  sourceAutoEdgeLines.forEach(line=>{try{editor.removeLineClass(line,'wrap','nnAutoEdgeLine')}catch(_){}});
+  sourceAutoEdgeLines=new Set(next);
+  next.forEach(i=>{try{editor.addLineClass(i,'wrap','nnAutoEdgeLine')}catch(_){}});
 }
 function splitLeadingTitle(body){
   const text=String(body||'').replace(/\r\n/g,'\n').trim();
@@ -1587,9 +1611,14 @@ async function flushAutosave(commitRelations=true){
         // Draft autosave never replaces Source text. A structural commit may
         // refresh the projection only when no newer keystroke exists.
         if(mode!=='source'||needRelationCommit){
+          // setValue resets scrollTop; when the user is still editing in Source
+          // view, put the viewport back exactly where it was so a background
+          // structural commit never yanks the page.
+          const keepScroll=(mode==='source')?editor.getScrollInfo():null;
           loadingDoc=true;clearLiveLinkMarks();editor.setValue(sourceProjectionWithBoxEdges(d.content));refreshSourceFrontmatterStyle();refreshSourceAutoEdgeStyle();loadingDoc=false;
           currentStructureSignature=structureSignatureFromText(d.content);
-          if(mode==='source'&&sourceCursor!=null){try{editor.setCursor(editor.posFromIndex(Math.min(sourceCursor,editor.getValue().length)))}catch(_){}}
+          if(mode==='source'&&sourceCursor!=null){try{editor.setCursor(editor.posFromIndex(Math.min(sourceCursor,editor.getValue().length)),null,{scroll:false})}catch(_){}}
+          if(keepScroll)try{editor.scrollTo(keepScroll.left,keepScroll.top)}catch(_){}
         }
         updateFileTitle();updateAuthorBar();updateEditPermissions();
       }
@@ -1752,7 +1781,6 @@ function vimJumpLink(cm,dir){
   }
   cm.setCursor({line:target.line,ch:target.labelStart});
   if(cm===bodyEditor)scheduleLiveLinkRefresh(0);
-  cm.scrollIntoView(cm.getCursor(),80);
 }
 
 function vimOpenCursorLink(cm){
@@ -1765,9 +1793,11 @@ async function toggleTaskByOrdinal(ord){
   const lines=editor.getValue().split('\n');let seen=0;
   for(let i=0;i<lines.length;i++){if(!taskLineInfo(lines[i]))continue;if(seen++!==ord)continue;lines[i]=lines[i].replace(/\[([ xX])\]/,m=>/x/i.test(m)?'[ ]':'[x]');editor.setValue(lines.join('\n'));dirty=true;queueAutosave(80);if(mode==='organize')renderOrganize();return}
 }
-function toggleTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(!taskLineInfo(line)){status('この行はチェックボックスではありません');return false}cm.replaceRange(line.replace(/\[([ xX])\]/,m=>/x/i.test(m)?'[ ]':'[x]'),{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(cur.ch,cm.getLine(cur.line).length)});cm.scrollIntoView(cm.getCursor(),80);return true}
-function makeTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(taskLineInfo(line)){status('すでにチェックボックスです');return}let next;if(!line.trim())next='- [ ] ';else if(/^\s*[-*+]\s+/.test(line))next=line.replace(/^(\s*[-*+]\s+)/,'$1[ ] ');else next='- [ ] '+line;cm.replaceRange(next,{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(next.length,Math.max(6,cur.ch+6))});cm.scrollIntoView(cm.getCursor(),80)}
-function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLine(cur.line)||'').trim()?'\n':'';const md=before+'| 列1 | 列2 |\n| --- | --- |\n|  |  |';cm.replaceSelection(md,'end','+table');const pos=cm.getCursor();cm.setCursor({line:Math.max(0,pos.line),ch:2});cm.scrollIntoView(cm.getCursor(),80)}
+// CodeMirror already scrolls the caret minimally into view on setCursor/
+// replaceRange; no extra scrollIntoView here or the viewport double-moves.
+function toggleTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(!taskLineInfo(line)){status('この行はチェックボックスではありません');return false}cm.replaceRange(line.replace(/\[([ xX])\]/,m=>/x/i.test(m)?'[ ]':'[x]'),{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(cur.ch,cm.getLine(cur.line).length)});return true}
+function makeTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(taskLineInfo(line)){status('すでにチェックボックスです');return}let next;if(!line.trim())next='- [ ] ';else if(/^\s*[-*+]\s+/.test(line))next=line.replace(/^(\s*[-*+]\s+)/,'$1[ ] ');else next='- [ ] '+line;cm.replaceRange(next,{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(next.length,Math.max(6,cur.ch+6))})}
+function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLine(cur.line)||'').trim()?'\n':'';const md=before+'| 列1 | 列2 |\n| --- | --- |\n|  |  |';cm.replaceSelection(md,'end','+table');const pos=cm.getCursor();cm.setCursor({line:Math.max(0,pos.line),ch:2})}
 // ---- Custom NORMAL-mode commands on the vim keymap ----
 // Direct keys for link navigation (these match the pre-addon layer):
 //   Enter = open the link under the cursor (else move down a line)
@@ -1796,7 +1826,7 @@ function registerVimLeaderCommands(){
     nnCopyLink:()=>copyCurrentNoteLink().catch(err=>status(err.message)),
     nnLinkNext:cm=>vimJumpLink(cm,1),
     nnLinkPrev:cm=>vimJumpLink(cm,-1),
-    nnEnter:cm=>{if(!vimOpenCursorLink(cm)){cm.execCommand('goLineDown');cm.scrollIntoView(cm.getCursor(),80)}},
+    nnEnter:cm=>{if(!vimOpenCursorLink(cm))cm.execCommand('goLineDown');},
     nnBack:()=>navigateBack().catch(console.error)
   };
   for(const name in defs)Vim.defineAction(name,defs[name]);
@@ -2014,7 +2044,9 @@ $('edgeForm').addEventListener('submit',async e=>{e.preventDefault();const relat
 
 function refocusVimAfterDialog(){
   if(mode!=='source'||!isSourceNormal())return;
-  setTimeout(()=>{try{editor.focus();editor.scrollIntoView(editor.getCursor(),80)}catch(_){}},0);
+  // Only restore focus. The caret has not moved, so do not scroll — that
+  // would yank the viewport away from wherever the user left it.
+  setTimeout(()=>{try{editor.focus()}catch(_){}},0);
 }
 $('newDialog').addEventListener('close',refocusVimAfterDialog);
 $('edgeDialog').addEventListener('close',refocusVimAfterDialog);

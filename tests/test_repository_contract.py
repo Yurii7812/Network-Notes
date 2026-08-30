@@ -113,10 +113,20 @@ class RepositoryContractTests(unittest.TestCase):
 
     def test_cursor_follow_scroll_is_delegated_to_codemirror(self):
         src = APP.read_text(encoding="utf-8")
-        # No custom multi-frame scroll loop; CodeMirror's scrollIntoView only.
+        # Exactly one scroll authority: CodeMirror's own minimal cursor-follow.
+        # No custom multi-frame loop, and no smooth-scroll on the CM scroller
+        # (it makes CM's synchronous scrollTop reads land mid-animation ->
+        # the viewport bounces while typing).
         self.assertNotIn("function vimEnsureCursorVisible(", src)
         self.assertNotIn("vimScrollRaf", src)
-        self.assertIn("cm.scrollIntoView(cm.getCursor(),80)", src)
+        self.assertIn(".CodeMirror-scroll{scroll-behavior:auto}", src)
+        self.assertNotIn(".CodeMirror-scroll{scroll-behavior:smooth}", src)
+        # None of the vim helpers force an extra scrollIntoView after setCursor.
+        self.assertNotIn("cm.scrollIntoView(cm.getCursor(),80)", src)
+        self.assertNotIn("editor.scrollIntoView(editor.getCursor(),80)", src)
+        # A background structural commit must not yank the Source viewport.
+        self.assertIn("const keepScroll=(mode==='source')?editor.getScrollInfo():null;", src)
+        self.assertIn("if(keepScroll)try{editor.scrollTo(keepScroll.left,keepScroll.top)}catch(_){}", src)
 
     def test_ime_composition_tracking_has_a_dropped_compositionend_failsafe(self):
         src = APP.read_text(encoding="utf-8")
