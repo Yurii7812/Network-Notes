@@ -725,6 +725,10 @@ const editor=CodeMirror.fromTextArea($('source'),{
   styleActiveLine:false,
   indentUnit:2,
   tabSize:2,
+  // Keep the caret ~3 lines clear of the top/bottom edge when CodeMirror
+  // scrolls it into view (like vim's scrolloff). Without this the caret sits
+  // flush against the edge and the line you are typing is hard to read.
+  cursorScrollMargin:72,
   // Modal editing is CodeMirror's official vim keymap. It owns key handling,
   // IME, selection and cursor-follow scrolling.
   keyMap:'vim',
@@ -763,6 +767,18 @@ const bodyEditor=CodeMirror.fromTextArea($('bodySource'),{
 });
 // Keep the body editor as ordinary document flow: the page scrolls, not a nested CodeMirror pane.
 bodyEditor.setSize(null,'auto');
+// The Source pane is a flex child that starts display:none and resizes on
+// every mode switch / window change. If CodeMirror keeps a stale height it
+// stops scrolling the caret into view (the caret drifts below the fold). A
+// ResizeObserver makes it re-measure whenever its box actually changes.
+if(window.ResizeObserver){
+  let roRaf=0;
+  const ro=new ResizeObserver(()=>{
+    if(roRaf)cancelAnimationFrame(roRaf);
+    roRaf=requestAnimationFrame(()=>{roRaf=0;if(mode==='source')try{editor.refresh()}catch(_){}});
+  });
+  try{ro.observe($('sourceWrap'))}catch(_){}
+}
 bindImeTracking(editor);bindImeTracking(bodyEditor);
 let sourceFrontmatterStyledLines=[];
 let sourceFrontmatterStyledKey='';
