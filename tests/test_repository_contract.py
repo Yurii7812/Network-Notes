@@ -1,6 +1,11 @@
 from pathlib import Path
 import py_compile
 import unittest
+import zipfile
+import importlib.util
+import io
+import shutil
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app.py"
@@ -83,6 +88,33 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn('id="disconnectWebBtn"', src)
         self.assertIn('if u.path == "/api/local-disconnect":', src)
         self.assertIn('cfg.update({"token":"","remote_username":"","remote_user_id":0,', src)
+
+    def test_v86_distributions_are_built_from_the_current_offline_app(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = Path(tmp) / "app"
+            app_dir.mkdir()
+            shutil.copy2(APP, app_dir / "app.py")
+            shutil.copytree(ROOT / "static", app_dir / "static")
+            spec = importlib.util.spec_from_file_location("networknotes_distribution_test", app_dir / "app.py")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            expected = APP.read_bytes()
+            for platform in ("Linux", "macOS", "Windows", "Portable"):
+                with self.subTest(platform=platform):
+                    raw = module.build_local_distribution(platform)
+                    with zipfile.ZipFile(io.BytesIO(raw)) as bundle:
+                        root = "NetworkNotes-Local-v86/"
+                        self.assertEqual(bundle.read(root + "app/app.py"), expected)
+                        launcher = bundle.read(root + ("Start-NetworkNotes.bat" if platform == "Windows" else "Start-NetworkNotes.sh"))
+                        self.assertIn(b"--local", launcher)
+                        data_files = [name for name in bundle.namelist() if name.startswith(root + "data/") and name != root + "data/"]
+                        self.assertEqual(data_files, [])
+
+    def test_v86_archives_are_not_committed_binary_files(self):
+        self.assertEqual(list((ROOT / "downloads").glob("NetworkNotes-Local-v86-*.zip")), [])
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn("return self.file_response(build_local_distribution(platform),name", src)
+
 
 
 if __name__ == "__main__":

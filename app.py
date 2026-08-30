@@ -41,6 +41,8 @@ AVATAR_DIR = MEDIA_DIR / "avatars"
 DOWNLOADS_DIR = APP_DIR / "downloads"
 LOCAL_CONFIG_FILE = DATA_DIR / "local_config.json"
 LOCAL_MODE = False
+LOCAL_RELEASE_VERSION = 86
+LOCAL_RELEASE_PLATFORMS = ("Windows", "macOS", "Linux", "Portable")
 PUBLIC_SERVER_DEFAULT = "https://network-notes.duckdns.org"
 REPORT_HIDE_THRESHOLD = 5
 MAX_NOTES_PER_USER = 1000
@@ -5773,23 +5775,67 @@ def community_payload(row: sqlite3.Row | dict, viewer_user_id: int) -> dict:
     return d
 
 
+def local_distribution_filename(platform: str) -> str:
+    if platform not in LOCAL_RELEASE_PLATFORMS:
+        raise ValueError("配布プラットフォームが不正です")
+    return f"NetworkNotes-Local-v{LOCAL_RELEASE_VERSION}-{platform}.zip"
+
+
+def build_local_distribution(platform: str) -> bytes:
+    """Build a data-free Local ZIP from the running application on demand."""
+    local_distribution_filename(platform)  # validate before building
+    root=f"NetworkNotes-Local-v{LOCAL_RELEASE_VERSION}/"
+    readme=f"""NetworkNotes Local v{LOCAL_RELEASE_VERSION}
+
+Folder layout:
+  app/   application code
+  data/  your local database, notes, media, connection settings and backups
+
+Local use is fully available without an account or Internet connection.
+Login or registration is requested only for an explicit Network transfer.
+Network -> Local and Local -> Network both completely replace the destination.
+No automatic upload, download, merge, or synchronization is performed.
+Updating/replacing app/ does not replace data/.
+"""
+    shell='''#!/usr/bin/env sh
+set -eu
+ROOT="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+mkdir -p "$ROOT/data"
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$ROOT/app/app.py" --local
+fi
+echo "Python 3.10+ is required." >&2
+exit 1
+'''
+    batch='''@echo off
+cd /d "%~dp0"
+if not exist data mkdir data
+py -3 app\\app.py --local
+if errorlevel 1 python app\\app.py --local
+'''
+    out=io.BytesIO()
+    with zipfile.ZipFile(out,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+        def add(name: str, data: bytes | str, mode: int = 0o644):
+            info=zipfile.ZipInfo(root+name,(2026,1,1,0,0,0)); info.compress_type=zipfile.ZIP_DEFLATED
+            info.external_attr=(mode & 0xFFFF)<<16
+            z.writestr(info,data.encode("utf-8") if isinstance(data,str) else data)
+        add("README.txt",readme)
+        add("data/",b"",0o755)
+        add("app/app.py",Path(__file__).read_bytes())
+        for asset in sorted((APP_DIR/"static").iterdir()):
+            if asset.is_file(): add("app/static/"+asset.name,asset.read_bytes())
+        if platform in {"Linux","macOS","Portable"}: add("Start-NetworkNotes.sh",shell,0o755)
+        if platform in {"Windows","Portable"}: add("Start-NetworkNotes.bat",batch)
+    return out.getvalue()
+
+
 def download_page_html() -> bytes:
-    DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    rx = re.compile(r"^NetworkNotes-Local-v(\d+)-(Linux|Windows|macOS|Portable)\.zip$")
-    candidates = []
-    for p in DOWNLOADS_DIR.glob("NetworkNotes-Local-v*.zip"):
-        m = rx.match(p.name)
-        if m and p.is_file():
-            candidates.append((int(m.group(1)), m.group(2), p))
-    latest = max((v for v, _platform, _p in candidates), default=None)
+    latest=LOCAL_RELEASE_VERSION
     order = {"Windows": 0, "macOS": 1, "Linux": 2, "Portable": 3}
     files = []
-    for version, platform, p in sorted((x for x in candidates if latest is not None and x[0] == latest), key=lambda x: order.get(x[1], 99)):
-        try:
-            digest = hashlib.sha256(p.read_bytes()).hexdigest(); size = p.stat().st_size
-        except OSError:
-            continue
-        files.append((platform, p.name, size, digest))
+    for platform in sorted(LOCAL_RELEASE_PLATFORMS,key=lambda x:order[x]):
+        raw=build_local_distribution(platform)
+        files.append((platform,local_distribution_filename(platform),len(raw),hashlib.sha256(raw).hexdigest()))
     cards = "".join(
         f'<div class="card"><h3>{platform}</h3><p>{name}<br>{size/1024/1024:.1f} MB</p>'
         f'<a class="download" href="/downloads/{urllib.parse.quote(name)}">最新版をダウンロード</a>'
@@ -5800,8 +5846,8 @@ def download_page_html() -> bytes:
     html = f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NetworkNotes Local</title><style>body{{font-family:system-ui,sans-serif;max-width:900px;margin:0 auto;padding:42px 24px;color:#111}}a{{color:#1670b8}}.top{{display:flex;justify-content:space-between;align-items:center}}.cards{{display:grid;gap:14px;margin-top:24px}}.card{{border:1px solid #ddd;border-radius:12px;padding:18px}}.download{{display:inline-block;border:1px solid #aaa;border-radius:8px;padding:9px 14px;text-decoration:none;margin:6px 0 12px}}code{{display:block;word-break:break-all;font-size:11px;color:#555}}li{{margin:.45em 0}}</style></head><body>
 <div class="top"><h1>NetworkNotes Local {version_label}</h1><a href="/">Web版へ戻る</a></div>
-<p>このページには現在の最新版だけを表示します。Localはアカウントなしでそのまま使えます。Webへ共有・同期するときだけWebアカウントへのログインまたは新規作成を行います。</p>
-<ul><li>Localアカウント不要・完全オフラインで編集可能</li><li>Markdown・添付ファイルをローカル保存</li><li>新規LocalノートはWeb非共有が初期状態</li><li>ノート単位でWebアップロードをON/OFF</li><li>非公開原本から「公開版」を作成可能</li><li>Webへ送るノート・添付を選択してエクスポート</li><li>チェックボックス・Markdownテーブル・Vim操作</li><li>画像はJPG・300KB以下へ自動変換</li><li>バックアップZIPの書き出し・復元</li></ul>
+<p>このページには現在の最新版だけを表示します。Localはアカウントもネット接続も不要で、そのまますべてのローカル機能を使えます。ログインまたは新規登録が必要なのは、明示的にネットとのデータ転送を選んだときだけです。</p>
+<ul><li>Localアカウント不要・完全オフラインで編集可能</li><li>Markdown・添付ファイルをローカル保存</li><li>自動アップロード・自動ダウンロードなし</li><li>「ネットからダウンロード」で NETWORK → LOCAL を完全上書き</li><li>「ネットへアップロード」で LOCAL → NETWORK を完全上書き</li><li>チェックボックス・Markdownテーブル・Vim操作</li><li>画像はJPG・300KB以下へ自動変換</li><li>バックアップZIPの書き出し・復元</li></ul>
 <div class="cards">{cards}</div></body></html>"""
     return html.encode("utf-8")
 
@@ -5845,7 +5891,7 @@ def local_workspace_user(preferred_session_user: dict | None = None) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "NetworkNotesSNS/1.0-v85"
+    server_version = "NetworkNotesSNS/1.0-v86"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
@@ -5989,6 +6035,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.text_response(download_page_html())
             if u.path.startswith("/downloads/"):
                 name = Path(urllib.parse.unquote(u.path[len("/downloads/"):])).name
+                for platform in LOCAL_RELEASE_PLATFORMS:
+                    if name == local_distribution_filename(platform):
+                        return self.file_response(build_local_distribution(platform),name,"application/zip")
                 path = DOWNLOADS_DIR / name
                 if not path.is_file():
                     return self.text_response(b"Not found", "text/plain", 404)
