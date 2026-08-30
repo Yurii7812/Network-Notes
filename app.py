@@ -11,6 +11,7 @@ import json
 import mimetypes
 import re
 import secrets
+import shutil
 import shlex
 import sqlite3
 import sys
@@ -40,6 +41,8 @@ AVATAR_DIR = MEDIA_DIR / "avatars"
 DOWNLOADS_DIR = APP_DIR / "downloads"
 LOCAL_CONFIG_FILE = DATA_DIR / "local_config.json"
 LOCAL_MODE = False
+LOCAL_RELEASE_VERSION = 86
+LOCAL_RELEASE_PLATFORMS = ("Windows", "macOS", "Linux", "Portable")
 PUBLIC_SERVER_DEFAULT = "https://network-notes.duckdns.org"
 REPORT_HIDE_THRESHOLD = 5
 MAX_NOTES_PER_USER = 1000
@@ -744,7 +747,7 @@ function updateEditPermissions(){
   updateViewModeToggle();
   $('contextActionBtn').style.display=editable?'inline-block':'none';
   $('shareCommunityBtn').style.display=(editable&&!currentData?.is_index&&!currentData?.is_topic&&!profile?.local_mode)?'inline-block':'none';
-  $('uploadToggleWrap').style.display=(editable&&profile?.local_mode)?'inline-flex':'none';
+  $('uploadToggleWrap').style.display='none';
   $('publicVersionBtn').style.display=(editable&&profile?.local_mode&&!currentData?.is_index)?'inline-block':'none';
   $('taskBtn').style.display=editable?'inline-block':'none';$('tableBtn').style.display=editable?'inline-block':'none';
   if(profile?.local_mode&&currentData)$('uploadToggle').checked=currentData.upload_enabled!==false;
@@ -1785,9 +1788,9 @@ function handleVimKey(cm,e,viewName){
       setVimInputMode('normal',cm);
       return;
     }
+    if(e.key==='Tab'&&tableCellMove(cm,e.shiftKey?-1:1)){e.preventDefault();e.stopPropagation();return}
     if(e.key==='Tab'){
-      if(tableCellMove(cm,e.shiftKey?-1:1)){e.preventDefault();e.stopPropagation();return}
-      // In INSERT, Tab follows the same link-to-link navigation as NORMAL.
+      // Tab uses the same link-to-link navigation in both editor input modes.
       // Leave ordinary Tab behavior intact when the document has no links.
       if(vimAllLinks(cm).length){e.preventDefault();e.stopPropagation();vimJumpLink(cm,e.shiftKey?-1:1);return}
     }
@@ -2305,7 +2308,7 @@ async function renderDataPage(){
   let syncCard='';
   if(profile?.local_mode){
     const cfg=await api('/api/local-settings');
-    syncCard='<section class="dataCard"><h3>Web共有・同期</h3><p>Localはアカウントなしで使えます。Webへ共有・同期したい時だけWebアカウントへ接続します。パスワードはLocalには保存しません。</p><form id="localWebLoginForm" class="syncForm"><label>Webサーバー<input id="localServerUrl" value="'+escapeHtml(cfg.server_url||'')+'"></label><label>Webユーザー名<input id="localWebUsername" autocomplete="username" maxlength="32" value="'+escapeHtml(cfg.remote_username||'')+'"></label><label>Webパスワード<input id="localWebPassword" type="password" autocomplete="current-password"></label><div class="actions"><button id="localWebLoginSubmit" type="submit">既存Webアカウントに接続して同期</button><button id="localWebRegisterSubmit" type="button">Webアカウントを作成</button></div></form><div class="syncConnected">接続先: <strong>'+escapeHtml(cfg.remote_username?('@'+cfg.remote_username):'未接続')+'</strong><br><small>最終ダウンロード: '+escapeHtml(cfg.last_pull_at||'未実行')+' · 最終アップロード: '+escapeHtml(cfg.last_push_at||'未実行')+'</small></div><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:7px;margin-top:9px"><input id="localAutoUpload" type="checkbox" '+(cfg.auto_upload?'checked':'')+'> Web接続後、共有対象を保存したら自動アップロード</label><div class="actions" style="margin-top:9px"><button id="pullWebBtn" type="button">Webから同期（ダウンロード）</button><button id="publishNowBtn" type="button">共有対象をWebへ反映</button><button id="exportSelectedBtn" type="button">選んでWebへエクスポート</button></div><details class="localSyncSecondary"><summary>同期キーで接続 / 詳細設定</summary><form id="localSyncForm" class="syncForm"><label>ローカル同期キー<input id="localSyncToken" type="password" value="'+escapeHtml(cfg.token||'')+'"></label><div class="actions"><button type="submit">同期キーで接続</button></div></form></details></section>';
+    syncCard='<section class="dataCard"><h3>ネット接続</h3><p>Localはログインなしで完全に使えます。ログインは、明示的にデータを転送するときだけ必要です。自動転送やマージは行いません。</p><form id="localWebLoginForm" class="syncForm"><label>Webサーバー<input id="localServerUrl" value="'+escapeHtml(cfg.server_url||'')+'"></label><label>Webユーザー名<input id="localWebUsername" autocomplete="username" maxlength="32" value="'+escapeHtml(cfg.remote_username||'')+'"></label><label>Webパスワード<input id="localWebPassword" type="password" autocomplete="current-password"></label><div class="actions"><button id="localWebLoginSubmit" type="submit">Webへログイン</button><button id="localWebRegisterSubmit" type="button">Webアカウントを作成</button></div></form><div class="syncConnected">接続先: <strong>'+escapeHtml(cfg.remote_username?('@'+cfg.remote_username):'未接続')+'</strong><br><small>最終ダウンロード: '+escapeHtml(cfg.last_pull_at||'未実行')+' · 最終アップロード: '+escapeHtml(cfg.last_push_at||'未実行')+'</small></div><div class="actions" style="margin-top:9px"><button id="pullWebBtn" type="button">ネットからダウンロード</button><button id="publishNowBtn" type="button">ネットへアップロード</button><button id="disconnectWebBtn" type="button">ログアウト</button></div><p class="localHint">ダウンロードはネットの全データでLocalを、アップロードはLocalの全データでネットを上書きします。</p></section>';
   }else{
     syncCard='<section class="dataCard"><h3>NetworkNotes Local</h3><p>ローカル版ではMarkdownをPCに保存し、公開するノートだけWebへ送れます。</p><div class="actions"><button id="openDownloadBtn" type="button">ローカル版をダウンロード</button><button id="issueSyncTokenBtn" type="button">ローカル同期キーを発行</button></div><div id="syncTokenResult" class="localHint">同期キーは発行時にだけ表示します。ローカル版の「データ」画面へ貼り付けてください。</div></section>';
   }
@@ -2316,13 +2319,11 @@ async function renderDataPage(){
   $('backupImportInput').onchange=()=>importBackupFile($('backupImportInput').files?.[0]).catch(e=>status(e.message));
   root.querySelectorAll('[data-unblock-user]').forEach(b=>b.onclick=async()=>{await api('/api/block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:Number(b.dataset.unblockUser)})});await renderDataPage()});
   if(profile?.local_mode){
-    $('localWebLoginForm').onsubmit=async e=>{e.preventDefault();const username=$('localWebUsername').value.trim(),password=$('localWebPassword').value,server_url=$('localServerUrl').value.trim();if(!username||!password){status('Webのユーザー名とパスワードを入力してください');return}const btn=$('localWebLoginSubmit');try{btn.disabled=true;btn.textContent='接続中...';const d=await api('/api/local-account-bootstrap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({server_url,username,password,pull:true})});$('localWebPassword').value='';profile=d.profile;updateProfileUi();await refreshFiles();if(profile?.index_file)await openFile(profile.index_file,{record:false,replaceUrl:true});status('Web @'+(d.remote_username||username)+' に接続して同期しました'+(d.sync?(' · '+Number(d.sync.notes||0)+'ノート'):''));await renderDataPage()}catch(err){status(err.message)}finally{btn.disabled=false;btn.textContent='既存Webアカウントに接続して同期'}};
+    $('localWebLoginForm').onsubmit=async e=>{e.preventDefault();const username=$('localWebUsername').value.trim(),password=$('localWebPassword').value,server_url=$('localServerUrl').value.trim();if(!username||!password){status('Webのユーザー名とパスワードを入力してください');return}const btn=$('localWebLoginSubmit');try{btn.disabled=true;btn.textContent='ログイン中...';const d=await api('/api/local-account-bootstrap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({server_url,username,password,pull:false})});$('localWebPassword').value='';profile=d.profile;updateProfileUi();status('Web @'+(d.remote_username||username)+' にログインしました');await renderDataPage()}catch(err){status(err.message)}finally{btn.disabled=false;btn.textContent='Webへログイン'}};
     $('localWebRegisterSubmit').onclick=async()=>{const username=$('localWebUsername').value.trim(),password=$('localWebPassword').value,server_url=$('localServerUrl').value.trim();if(!username||password.length<8){status('Webユーザー名と8文字以上のパスワードを入力してください');return}if(!confirm('Web版に @'+username+' を新規作成して、このLocalと接続しますか？'))return;const btn=$('localWebRegisterSubmit');try{btn.disabled=true;btn.textContent='作成中...';const d=await api('/api/local-account-register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({server_url,username,password,pull:false})});$('localWebPassword').value='';profile=d.profile;updateProfileUi();status('Web @'+(d.remote_username||username)+' を作成して接続しました');await renderDataPage()}catch(err){status(err.message)}finally{btn.disabled=false;btn.textContent='Webアカウントを作成'}};
-    $('localAutoUpload').onchange=async()=>{const desired=$('localAutoUpload').checked;if(desired&&!profile?.web_connected){$('localAutoUpload').checked=false;showAuth('自動アップロードを使うにはWebアカウントへ接続してください',async()=>{await renderDataPage();const x=$('localAutoUpload');if(x){x.checked=true;x.dispatchEvent(new Event('change'))}});return}try{await api('/api/local-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({server_url:$('localServerUrl').value.trim(),token:$('localSyncToken').value.trim(),auto_upload:desired})});status(desired?'保存後の自動アップロードをONにしました':'保存後の自動アップロードをOFFにしました')}catch(err){status(err.message)}};
-    $('localSyncForm').onsubmit=async e=>{e.preventDefault();try{const d=await api('/api/local-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({server_url:$('localServerUrl').value.trim(),token:$('localSyncToken').value.trim(),auto_upload:$('localAutoUpload').checked})});profile={...profile,web_connected:!!d.remote_username,remote_username:d.remote_username||''};updateProfileUi();status('Web @'+(d.remote_username||'')+' と接続しました');await renderDataPage()}catch(err){status(err.message)}};
-    $('publishNowBtn').onclick=async()=>{if(!requireWebConnection('Webへ反映するにはWebアカウントへログインするか、新規作成してください',()=>$('publishNowBtn')?.click()))return;status('Webへアップロード中...');try{const d=await api('/api/local-publish-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});status('Webへ反映しました: '+Number(d.published||0)+'ノート')}catch(e){status(e.message)}};
-    $('exportSelectedBtn').onclick=()=>openLocalExportDialog();
-    $('pullWebBtn').onclick=async()=>{if(!requireWebConnection('Webから同期するにはWebアカウントへログインするか、新規作成してください',()=>$('pullWebBtn')?.click()))return;if(!confirm('Webの自分のデータをLocalへ同期しますか？同期前にLocalの安全バックアップを自動作成します。'))return;status('Webから同期中...');try{const d=await api('/api/local-pull',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});await refreshFiles();if(current&&cachedFiles.some(x=>x.name===current))await openFile(current,{record:false});else if(profile?.index_file)await openFile(profile.index_file,{record:false});status('Webから同期しました: '+Number(d.notes||0)+'ノート / '+Number(d.attachments||0)+'添付'+(Number(d.conflicts||0)?(' · 競合バックアップ '+Number(d.conflicts)):'')+(Number(d.kept_local||0)?(' · Local変更保持 '+Number(d.kept_local)):''))}catch(e){status(e.message)}};
+    $('publishNowBtn').onclick=async()=>{if(!requireWebConnection('ネットへアップロードするにはWebアカウントへログインするか、新規作成してください',()=>$('publishNowBtn')?.click()))return;if(!confirm('Localの全データでネット上の自分のデータを完全に上書きしますか？'))return;status('ネットへアップロード中...');try{const d=await api('/api/local-publish-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});status('ネットへアップロードしました: '+Number(d.published||0)+'ノート')}catch(e){status(e.message)}};
+    $('pullWebBtn').onclick=async()=>{if(!requireWebConnection('ネットからダウンロードするにはWebアカウントへログインするか、新規作成してください',()=>$('pullWebBtn')?.click()))return;if(!confirm('ネット上の全データでLocalを完全に上書きしますか？現在のLocalデータは作業領域から置き換えられます。'))return;status('ネットからダウンロード中...');try{const d=await api('/api/local-pull',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});await refreshFiles();await openFile(profile.index_file,{record:false});status('ネットからダウンロードしました: '+Number(d.notes||0)+'ノート / '+Number(d.attachments||0)+'添付')}catch(e){status(e.message)}};
+    $('disconnectWebBtn').onclick=async()=>{if(!profile?.web_connected)return;if(!confirm('Webアカウントからログアウトしますか？Localのデータは残ります。'))return;await api('/api/local-disconnect',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});profile={...profile,web_connected:false,remote_username:''};updateProfileUi();status('Webアカウントからログアウトしました');await renderDataPage()};
   }else{
     $('openDownloadBtn').onclick=()=>{window.location.href='/download'};
     $('issueSyncTokenBtn').onclick=async()=>{if(!confirm('以前の同期キーは無効になります。新しい同期キーを発行しますか？'))return;const d=await api('/api/sync-token',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});$('syncTokenResult').innerHTML='<div class="tokenBox">'+escapeHtml(d.token)+'</div><div class="localHint">このキーだけをLocal版へ貼り付けてください。@'+escapeHtml(d.username||profile.username||'')+' と自動的に紐付きます。再表示はできません。</div>';try{await navigator.clipboard.writeText(d.token)}catch(_){}};
@@ -4705,7 +4706,7 @@ def save_local_config(data: dict) -> dict:
         ident=remote_sync_identity(server,token); remote_username=str(ident.get("username") or ""); remote_user_id=int(ident.get("user_id") or 0)
         if not remote_username or not remote_user_id: raise ValueError("同期キーのWebアカウントを確認できません")
     same_remote=bool(token and remote_user_id and int(old.get("remote_user_id") or 0)==remote_user_id and str(old.get("server_url") or "").rstrip("/")==server)
-    cfg={"server_url":server,"token":token,"auto_upload":bool(data.get("auto_upload",old.get("auto_upload",False))),
+    cfg={"server_url":server,"token":token,"auto_upload":False,
          "remote_username":remote_username,"remote_user_id":remote_user_id,"workspace_user_id":int(old.get("workspace_user_id") or 0),
          "last_pull_at":str(old.get("last_pull_at") or "") if same_remote else "",
          "last_push_at":str(old.get("last_push_at") or "") if same_remote else "",
@@ -4798,13 +4799,14 @@ def _replace_note_targets_for_publish(text: str, filename_map: dict[str,str]) ->
 
 
 def build_publish_bundle(user_id: int, selected_notes: set[str] | None = None,
-                         selected_attachments: set[str] | None = None, target_username: str | None = None) -> bytes:
+                         selected_attachments: set[str] | None = None, target_username: str | None = None,
+                         include_all: bool = False) -> bytes:
     uid=int(user_id); local_username=username_for_user_id(uid); publish_username=str(target_username or local_username).strip() or local_username
     files=user_files(uid); contents={f:read_file(f) for f in files}; titles={f:title_of(c,f) for f,c in contents.items()}
-    aliases=_public_version_aliases(uid,contents); eligible={f for f,c in contents.items() if note_upload_enabled(c)}
+    aliases=_public_version_aliases(uid,contents); eligible=set(files) if include_all else {f for f,c in contents.items() if note_upload_enabled(c)}
     filename_map=_publish_filename_map(uid,publish_username,sorted(eligible))
     for source,public in list(aliases.items()):
-        if source in eligible and not note_upload_enabled(contents[source]): eligible.discard(source)
+        if not include_all and source in eligible and not note_upload_enabled(contents[source]): eligible.discard(source)
         if public not in eligible: aliases.pop(source,None)
     requested=set(eligible) if selected_notes is None else {safe_name(x) for x in selected_notes if x in eligible}
     rendered={}
@@ -4848,6 +4850,8 @@ def build_publish_bundle(user_id: int, selected_notes: set[str] | None = None,
             for m in media_rx.finditer(text):
                 rel=Path(urllib.parse.unquote(m.group(1)))
                 if not rel.is_absolute() and ".." not in rel.parts: referenced_media.add(rel.as_posix())
+        if include_all and folder.exists():
+            referenced_media |= {p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file()}
         if selected_attachments is not None: referenced_media &= {Path(x).as_posix() for x in selected_attachments if ".." not in Path(x).parts}
         if folder.exists():
             for rel_s in sorted(referenced_media):
@@ -4901,6 +4905,10 @@ def apply_publish_bundle(user_id: int, raw: bytes, replace: bool = True) -> dict
             incoming[name] = content
         with db_conn() as con:
             previous = {str(r[0]) for r in con.execute("SELECT note_file FROM local_published_notes WHERE user_id=?", (uid,)).fetchall()}
+        if replace:
+            # A manual Local -> Network transfer is a snapshot replacement, not
+            # a merge with notes that happen not to have been published before.
+            previous |= set(user_files(uid))
         current = set(incoming)
         remove = (previous - current) if replace else set()
         if remove:
@@ -4926,10 +4934,9 @@ def apply_publish_bundle(user_id: int, raw: bytes, replace: bool = True) -> dict
                 "SELECT rel_path FROM local_published_attachments WHERE user_id=?", (uid,)
             ).fetchall()}
         if replace:
-            for rel_s in previous_attachments - incoming_attachments:
-                dest = folder / Path(rel_s)
-                try: dest.unlink()
-                except FileNotFoundError: pass
+            for dest in sorted(folder.rglob("*"), reverse=True) if folder.exists() else []:
+                if dest.is_file() and dest.relative_to(folder).as_posix() not in incoming_attachments:
+                    dest.unlink()
         for entry in attachment_entries:
             data = z.read(entry)
             if len(data) > MAX_ATTACHMENT_BYTES:
@@ -4976,18 +4983,18 @@ def save_local_safety_backup(user_id: int, reason: str = "before-sync") -> str:
 def publish_local_now(user_id: int) -> dict:
     if not LOCAL_MODE: raise PermissionError("ローカル版でのみ使用できます")
     cfg=local_config(); uid=int(user_id)
-    if not cfg.get("token") or not cfg.get("remote_username"): raise ValueError("Webアカウントでログインして同期してください")
-    bundle=build_publish_bundle(uid,target_username=cfg["remote_username"])
-    payload=json.dumps({"token":cfg["token"],"bundle_base64":base64.b64encode(bundle).decode("ascii")}).encode("utf-8")
+    if not cfg.get("token") or not cfg.get("remote_username"): raise ValueError("Webアカウントへログインしてください")
+    bundle=build_publish_bundle(uid,target_username=cfg["remote_username"],include_all=True)
+    payload=json.dumps({"token":cfg["token"],"mode":"replace","bundle_base64":base64.b64encode(bundle).decode("ascii")}).encode("utf-8")
     req=urllib.request.Request(cfg["server_url"].rstrip("/")+"/api/local-publish",data=payload,headers={"Content-Type":"application/json"},method="POST")
     try:
         with urllib.request.urlopen(req,timeout=30) as r: result=json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try: detail=json.loads(e.read().decode("utf-8")).get("error",str(e))
         except Exception: detail=str(e)
-        raise ValueError("Web同期に失敗しました: "+detail)
-    except Exception as e: raise ValueError("Web同期に失敗しました: "+str(e))
-    hash_updates={f:sync_content_hash(read_file(f)) for f in user_files(uid) if note_upload_enabled(read_file(f))}
+        raise ValueError("ネットへのアップロードに失敗しました: "+detail)
+    except Exception as e: raise ValueError("ネットへのアップロードに失敗しました: "+str(e))
+    hash_updates={f:sync_content_hash(read_file(f)) for f in user_files(uid)}
     update_local_sync_stamp("last_push_at",hash_updates)
     return result
 
@@ -5084,7 +5091,7 @@ def pull_web_backup_now(user_id: int) -> dict:
         raise PermissionError("ローカル版でのみ使用できます")
     cfg = local_config(); uid = int(user_id)
     if not cfg.get("token") or not cfg.get("remote_username"):
-        raise ValueError("Webアカウントでログインして同期してください")
+        raise ValueError("Webアカウントへログインしてください")
     payload = json.dumps({"token": cfg["token"]}).encode("utf-8")
     req = urllib.request.Request(cfg["server_url"].rstrip("/") + "/api/local-backup", data=payload,
                                  headers={"Content-Type": "application/json"}, method="POST")
@@ -5095,62 +5102,38 @@ def pull_web_backup_now(user_id: int) -> dict:
     except urllib.error.HTTPError as e:
         try: detail = json.loads(e.read().decode("utf-8")).get("error", str(e))
         except Exception: detail = str(e)
-        raise ValueError("Webバックアップ取得に失敗しました: " + detail)
+        raise ValueError("ネットからのダウンロードに失敗しました: " + detail)
     except Exception as e:
-        raise ValueError("Webバックアップ取得に失敗しました: " + str(e))
+        raise ValueError("ネットからのダウンロードに失敗しました: " + str(e))
 
     safety=save_local_safety_backup(uid,"before-web-pull")
     destination_map,new_sync_map=_backup_destination_mapping(uid,raw)
     destinations=list(destination_map.values())
-    before={name:read_file(name) for name in destinations if (VAULT/name).exists()}
-    baselines=dict(cfg.get("sync_hashes") or {})
+    # The user explicitly selected Network -> Local. Replace the workspace
+    # snapshot in full; do not perform change detection, merging, or conflicts.
+    for name in user_files(uid):
+        try: (VAULT/name).unlink()
+        except FileNotFoundError: pass
+    media_folder=MEDIA_DIR/f"u{uid}"
+    if media_folder.exists(): shutil.rmtree(media_folder)
     restored=import_backup_zip(uid,raw,destination_mapping=destination_map)
-    conflicts=[]; kept_local=[]; hash_updates={}
+    hash_updates={}
     for name in destinations:
         if not (VAULT/name).exists(): continue
         incoming=set_note_upload_enabled(read_file(name),True)
         write_file(name,incoming)
-        incoming=read_file(name); incoming_hash=sync_content_hash(incoming)
-        previous=before.get(name); baseline=str(baselines.get(name) or "")
-        if previous is not None:
-            previous_hash=sync_content_hash(previous)
-            local_changed=bool(baseline and previous_hash!=baseline)
-            remote_changed=bool(baseline and incoming_hash!=baseline)
-            if local_changed and not remote_changed:
-                # Only Local changed: keep it. The Web hash remains the baseline.
-                write_file(name,previous); kept_local.append(name); hash_updates[name]=incoming_hash; continue
-            first_sync_conflict=(not baseline and previous_hash!=incoming_hash)
-            both_changed=(local_changed and remote_changed and previous_hash!=incoming_hash)
-            if first_sync_conflict or both_changed:
-                # Never throw away the version the user was actively editing.
-                # Keep Local in place and save the incoming Web version separately.
-                conflicts.append(_save_sync_conflict_copy(name,incoming,"web-incoming"))
-                write_file(name,previous); kept_local.append(name); hash_updates[name]=incoming_hash; continue
-        hash_updates[name]=incoming_hash
+        hash_updates[name]=sync_content_hash(read_file(name))
     ensure_created_frontmatter_all_notes();ensure_creator_metadata_all_notes();sync_edges()
     latest=local_config(); latest["sync_file_map"]=new_sync_map; write_local_config(latest)
     restored["downloaded_bytes"]=len(raw);restored["safety_backup"]=safety
-    restored["conflicts"]=len(conflicts);restored["conflict_files"]=conflicts;restored["kept_local"]=len(kept_local)
+    restored["mode"]="network-replaces-local"
     update_local_sync_stamp("last_pull_at",hash_updates)
     return restored
 
 
 def schedule_local_publish(user_id: int, delay: float = 1.2) -> None:
-    if not LOCAL_MODE:
-        return
-    cfg = local_config()
-    if not cfg.get("auto_upload") or not cfg.get("token") or not cfg.get("remote_username"):
-        return
-    uid = int(user_id)
-    with _LOCAL_PUBLISH_LOCK:
-        old = _LOCAL_PUBLISH_TIMERS.pop(uid, None)
-        if old: old.cancel()
-        def run():
-            try: publish_local_now(uid)
-            except Exception as e: print("NetworkNotes Local auto-upload:", e, file=sys.stderr)
-            finally:
-                with _LOCAL_PUBLISH_LOCK: _LOCAL_PUBLISH_TIMERS.pop(uid, None)
-        t = threading.Timer(delay, run); t.daemon = True; _LOCAL_PUBLISH_TIMERS[uid] = t; t.start()
+    # Network transfer is always an explicit user action.
+    return
 
 
 def bootstrap_local_from_sync_key(server_url: str, token: str) -> tuple[dict,str,str]:
@@ -5162,7 +5145,7 @@ def bootstrap_local_from_sync_key(server_url: str, token: str) -> tuple[dict,str
     workspace=local_workspace_user(); uid=int(workspace["id"])
     old_cfg=local_config(); remote_user_id=int(ident.get("user_id") or 0)
     same_remote=bool(remote_user_id and int(old_cfg.get("remote_user_id") or 0)==remote_user_id and str(old_cfg.get("server_url") or "").rstrip("/")==server)
-    cfg={"server_url":server,"token":str(token).strip(),"auto_upload":bool(old_cfg.get("auto_upload",False)),
+    cfg={"server_url":server,"token":str(token).strip(),"auto_upload":False,
          "remote_username":remote_username,"remote_user_id":remote_user_id,"workspace_user_id":uid,
          "last_pull_at":str(old_cfg.get("last_pull_at") or "") if same_remote else "",
          "last_push_at":str(old_cfg.get("last_push_at") or "") if same_remote else "",
@@ -5792,23 +5775,67 @@ def community_payload(row: sqlite3.Row | dict, viewer_user_id: int) -> dict:
     return d
 
 
+def local_distribution_filename(platform: str) -> str:
+    if platform not in LOCAL_RELEASE_PLATFORMS:
+        raise ValueError("配布プラットフォームが不正です")
+    return f"NetworkNotes-Local-v{LOCAL_RELEASE_VERSION}-{platform}.zip"
+
+
+def build_local_distribution(platform: str) -> bytes:
+    """Build a data-free Local ZIP from the running application on demand."""
+    local_distribution_filename(platform)  # validate before building
+    root=f"NetworkNotes-Local-v{LOCAL_RELEASE_VERSION}/"
+    readme=f"""NetworkNotes Local v{LOCAL_RELEASE_VERSION}
+
+Folder layout:
+  app/   application code
+  data/  your local database, notes, media, connection settings and backups
+
+Local use is fully available without an account or Internet connection.
+Login or registration is requested only for an explicit Network transfer.
+Network -> Local and Local -> Network both completely replace the destination.
+No automatic upload, download, merge, or synchronization is performed.
+Updating/replacing app/ does not replace data/.
+"""
+    shell='''#!/usr/bin/env sh
+set -eu
+ROOT="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+mkdir -p "$ROOT/data"
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$ROOT/app/app.py" --local
+fi
+echo "Python 3.10+ is required." >&2
+exit 1
+'''
+    batch='''@echo off
+cd /d "%~dp0"
+if not exist data mkdir data
+py -3 app\\app.py --local
+if errorlevel 1 python app\\app.py --local
+'''
+    out=io.BytesIO()
+    with zipfile.ZipFile(out,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+        def add(name: str, data: bytes | str, mode: int = 0o644):
+            info=zipfile.ZipInfo(root+name,(2026,1,1,0,0,0)); info.compress_type=zipfile.ZIP_DEFLATED
+            info.external_attr=(mode & 0xFFFF)<<16
+            z.writestr(info,data.encode("utf-8") if isinstance(data,str) else data)
+        add("README.txt",readme)
+        add("data/",b"",0o755)
+        add("app/app.py",Path(__file__).read_bytes())
+        for asset in sorted((APP_DIR/"static").iterdir()):
+            if asset.is_file(): add("app/static/"+asset.name,asset.read_bytes())
+        if platform in {"Linux","macOS","Portable"}: add("Start-NetworkNotes.sh",shell,0o755)
+        if platform in {"Windows","Portable"}: add("Start-NetworkNotes.bat",batch)
+    return out.getvalue()
+
+
 def download_page_html() -> bytes:
-    DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    rx = re.compile(r"^NetworkNotes-Local-v(\d+)-(Linux|Windows|macOS|Portable)\.zip$")
-    candidates = []
-    for p in DOWNLOADS_DIR.glob("NetworkNotes-Local-v*.zip"):
-        m = rx.match(p.name)
-        if m and p.is_file():
-            candidates.append((int(m.group(1)), m.group(2), p))
-    latest = max((v for v, _platform, _p in candidates), default=None)
+    latest=LOCAL_RELEASE_VERSION
     order = {"Windows": 0, "macOS": 1, "Linux": 2, "Portable": 3}
     files = []
-    for version, platform, p in sorted((x for x in candidates if latest is not None and x[0] == latest), key=lambda x: order.get(x[1], 99)):
-        try:
-            digest = hashlib.sha256(p.read_bytes()).hexdigest(); size = p.stat().st_size
-        except OSError:
-            continue
-        files.append((platform, p.name, size, digest))
+    for platform in sorted(LOCAL_RELEASE_PLATFORMS,key=lambda x:order[x]):
+        raw=build_local_distribution(platform)
+        files.append((platform,local_distribution_filename(platform),len(raw),hashlib.sha256(raw).hexdigest()))
     cards = "".join(
         f'<div class="card"><h3>{platform}</h3><p>{name}<br>{size/1024/1024:.1f} MB</p>'
         f'<a class="download" href="/downloads/{urllib.parse.quote(name)}">最新版をダウンロード</a>'
@@ -5819,8 +5846,8 @@ def download_page_html() -> bytes:
     html = f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NetworkNotes Local</title><style>body{{font-family:system-ui,sans-serif;max-width:900px;margin:0 auto;padding:42px 24px;color:#111}}a{{color:#1670b8}}.top{{display:flex;justify-content:space-between;align-items:center}}.cards{{display:grid;gap:14px;margin-top:24px}}.card{{border:1px solid #ddd;border-radius:12px;padding:18px}}.download{{display:inline-block;border:1px solid #aaa;border-radius:8px;padding:9px 14px;text-decoration:none;margin:6px 0 12px}}code{{display:block;word-break:break-all;font-size:11px;color:#555}}li{{margin:.45em 0}}</style></head><body>
 <div class="top"><h1>NetworkNotes Local {version_label}</h1><a href="/">Web版へ戻る</a></div>
-<p>このページには現在の最新版だけを表示します。Localはアカウントなしでそのまま使えます。Webへ共有・同期するときだけWebアカウントへのログインまたは新規作成を行います。</p>
-<ul><li>Localアカウント不要・完全オフラインで編集可能</li><li>Markdown・添付ファイルをローカル保存</li><li>新規LocalノートはWeb非共有が初期状態</li><li>ノート単位でWebアップロードをON/OFF</li><li>非公開原本から「公開版」を作成可能</li><li>Webへ送るノート・添付を選択してエクスポート</li><li>チェックボックス・Markdownテーブル・Vim操作</li><li>画像はJPG・300KB以下へ自動変換</li><li>バックアップZIPの書き出し・復元</li></ul>
+<p>このページには現在の最新版だけを表示します。Localはアカウントもネット接続も不要で、そのまますべてのローカル機能を使えます。ログインまたは新規登録が必要なのは、明示的にネットとのデータ転送を選んだときだけです。</p>
+<ul><li>Localアカウント不要・完全オフラインで編集可能</li><li>Markdown・添付ファイルをローカル保存</li><li>自動アップロード・自動ダウンロードなし</li><li>「ネットからダウンロード」で NETWORK → LOCAL を完全上書き</li><li>「ネットへアップロード」で LOCAL → NETWORK を完全上書き</li><li>チェックボックス・Markdownテーブル・Vim操作</li><li>画像はJPG・300KB以下へ自動変換</li><li>バックアップZIPの書き出し・復元</li></ul>
 <div class="cards">{cards}</div></body></html>"""
     return html.encode("utf-8")
 
@@ -5864,7 +5891,7 @@ def local_workspace_user(preferred_session_user: dict | None = None) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "NetworkNotesSNS/1.0-v85"
+    server_version = "NetworkNotesSNS/1.0-v86"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
@@ -6008,6 +6035,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.text_response(download_page_html())
             if u.path.startswith("/downloads/"):
                 name = Path(urllib.parse.unquote(u.path[len("/downloads/"):])).name
+                for platform in LOCAL_RELEASE_PLATFORMS:
+                    if name == local_distribution_filename(platform):
+                        return self.file_response(build_local_distribution(platform),name,"application/zip")
                 path = DOWNLOADS_DIR / name
                 if not path.is_file():
                     return self.text_response(b"Not found", "text/plain", 404)
@@ -6369,6 +6399,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response({"token": issue_local_sync_token(uid), "username": username_for_user_id(uid)})
             if u.path == "/api/local-settings":
                 return self.json_response(save_local_config(body))
+            if u.path == "/api/local-disconnect":
+                if not LOCAL_MODE: raise PermissionError("ローカル版でのみ使用できます")
+                cfg=local_config(); cfg.update({"token":"","remote_username":"","remote_user_id":0,
+                                                "auto_upload":False,"last_pull_at":"","last_push_at":"",
+                                                "sync_hashes":{},"sync_file_map":{}})
+                write_local_config(cfg)
+                return self.json_response({"ok":True})
             if u.path == "/api/local-publish-now":
                 return self.json_response(publish_local_now(uid))
             if u.path == "/api/local-export-preview":
