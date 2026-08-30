@@ -76,6 +76,7 @@ HTML = r'''<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Network Notes</title>
 <link rel="stylesheet" href="/static/codemirror.css" />
+<link rel="stylesheet" href="/static/dialog.css" />
 <style>
 :root{
   color-scheme:light;
@@ -470,6 +471,9 @@ header{
 <script src="/static/meta.js"></script>
 <script src="/static/markdown.js"></script>
 <script src="/static/continuelist.js"></script>
+<script src="/static/searchcursor.js"></script>
+<script src="/static/dialog.js"></script>
+<script src="/static/vim.js"></script>
 <script src="/static/active-line.js"></script>
 <script>
 let current=null, dirty=false, currentData=null, mode='organize', autosaveTimer=null, loadingDoc=false, relationSyncPending=false;
@@ -515,39 +519,38 @@ let searchTimer=null;
 const voterId=(()=>{let v=localStorage.getItem('networkNotesVoterId');if(!v){v=(globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():'local-'+Date.now()+'-'+Math.random().toString(16).slice(2);localStorage.setItem('networkNotesVoterId',v)}return v})();
 const sectionSort=new Map();
 const $=id=>document.getElementById(id);
-let vimInputMode='insert';
-let vimVisual=null;          // null | 'char' | 'line' (only meaningful while vimInputMode==='normal')
-let vimVisualAnchor=null;    // {line,ch} fixed end of the visual selection
-let vimPendingCommand='';
-let vimRegister='';
-let vimRegisterLinewise=false;
 let vimNormalLinkMarks=[];
 let pendingSourceCursorFromBody=null;
-const vimImeComposing=new WeakSet();
-const vimImeEndedAt=new WeakMap();
-// Chromium drops `compositionend` when the input field loses focus or its pane
-// is hidden mid-conversion. Without a failsafe, `vimImeComposing` stays set and
-// every keystroke is treated as "still composing": INSERT stops accepting text
-// and Escape stops working until a mouse click happens to restart the IME.
-const vimCompositionWatchdog=new WeakMap();
-function bumpVimCompositionWatchdog(cm){
-  if(vimCompositionWatchdog.has(cm))clearTimeout(vimCompositionWatchdog.get(cm));
-  // Long enough that a slow typist pausing mid-conversion is never cut off;
-  // blur and real-keydown recovery handle the common cases well before this.
-  vimCompositionWatchdog.set(cm,setTimeout(()=>forceEndVimComposition(cm),6000));
+// Vim keybindings are CodeMirror's official keymap/vim.js addon. Only two
+// things are tracked here: which editors are mid-IME-composition (so autosave
+// and view switches wait rather than capturing a half-finished conversion),
+// and a failsafe for the case where Chromium drops `compositionend` because
+// the field blurred or its pane was hidden during conversion.
+const imeComposing=new WeakSet();
+const imeCompositionWatchdog=new WeakMap();
+function bumpImeWatchdog(cm){
+  if(imeCompositionWatchdog.has(cm))clearTimeout(imeCompositionWatchdog.get(cm));
+  imeCompositionWatchdog.set(cm,setTimeout(()=>forceEndImeComposition(cm),6000));
 }
-function forceEndVimComposition(cm,opts={}){
-  if(vimCompositionWatchdog.has(cm)){clearTimeout(vimCompositionWatchdog.get(cm));vimCompositionWatchdog.delete(cm)}
-  if(!vimImeComposing.has(cm))return;
-  vimImeComposing.delete(cm);
-  // A stale flag (cleared because a real non-composing keydown arrived) must not
-  // also swallow that key's Escape via the 90ms guard in handleVimKey.
-  vimImeEndedAt.set(cm,opts.stale?0:performance.now());
+function forceEndImeComposition(cm){
+  if(imeCompositionWatchdog.has(cm)){clearTimeout(imeCompositionWatchdog.get(cm));imeCompositionWatchdog.delete(cm)}
+  if(!imeComposing.has(cm))return;
+  imeComposing.delete(cm);
   try{
     if(cm===editor)refreshSourceFrontmatterStyle();
     if(!loadingDoc&&cm===editor&&mode==='source'){dirty=true;queueAutosave(550)}
   }catch(_){}
   resolveImeIdleWaiters();
+}
+function isSourceNormal(){
+  const v=editor&&editor.state&&editor.state.vim;
+  return !!(v&&!v.insertMode&&!v.visualMode);
+}
+function sourceEnterInsert(){
+  try{
+    const v=editor.state&&editor.state.vim;
+    if(v&&!v.insertMode&&window.CodeMirror&&CodeMirror.Vim)CodeMirror.Vim.handleKey(editor,'i');
+  }catch(_){}
 }
 function requestedNoteFromUrl(){try{return new URL(window.location.href).searchParams.get('note')||''}catch(_){return ''}}
 function syncNoteUrl(name,replace=false){
@@ -608,44 +611,29 @@ function updateAuthorBar(){
   $('likeBtn').style.display=currentData.is_index?'none':'inline-block';
   const report=$('reportNoteBtn');if(report)report.style.display=(!currentData.can_edit&&!currentData.is_index)?'inline-block':'none';
 }
-function collapseVimSelection(cm,pos=null){
-  if(!cm)return null;
-  try{
-    const head=pos||cm.getCursor('head')||cm.getCursor();
-    const line=Math.max(0,Math.min(Number(head.line)||0,Math.max(0,cm.lineCount()-1)));
-    const text=cm.getLine(line)||'';
-    const caret={line,ch:Math.max(0,Math.min(Number(head.ch)||0,text.length))};
-    cm.operation(()=>cm.setSelection(caret,caret,{scroll:false}));
-    const sel=window.getSelection?.();if(sel&&sel.rangeCount)sel.removeAllRanges();
-    return caret;
-  }catch(_){return null}
-}
-function anyImeComposing(){return vimImeComposing.has(editor)||vimImeComposing.has(bodyEditor)}
+function anyImeComposing(){return imeComposing.has(editor)||imeComposing.has(bodyEditor)}
 function resolveImeIdleWaiters(){if(anyImeComposing())return;while(imeIdleWaiters.length){try{imeIdleWaiters.shift()()}catch(_){}}}
 function waitForImeIdle(timeout=2500){
   if(!anyImeComposing())return Promise.resolve();
   return new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;resolve()};imeIdleWaiters.push(finish);setTimeout(finish,timeout)});
 }
-function bindVimIme(cm){
-  const input=cm.getInputField?.();if(!input)return;
+function bindImeTracking(cm){
+  const input=cm.getInputField&&cm.getInputField();if(!input)return;
   input.addEventListener('compositionstart',()=>{
-    vimImeComposing.add(cm);
-    bumpVimCompositionWatchdog(cm);
-    // A timer started by the preceding keystroke must not save a half-finished
+    imeComposing.add(cm);
+    bumpImeWatchdog(cm);
+    // A timer from the preceding keystroke must not save a half-finished
     // Japanese conversion string. Saving resumes after compositionend.
     if(autosaveTimer){clearTimeout(autosaveTimer);autosaveTimer=null}
     if(liveLinkRefreshTimer){clearTimeout(liveLinkRefreshTimer);liveLinkRefreshTimer=null}
   });
-  input.addEventListener('compositionupdate',()=>bumpVimCompositionWatchdog(cm));
-  // Focus leaving the field mid-conversion means the IME was abandoned without
-  // a compositionend. Clear the flag on the next tick so INSERT/Escape recover.
-  input.addEventListener('blur',()=>{setTimeout(()=>forceEndVimComposition(cm),0)});
+  input.addEventListener('compositionupdate',()=>bumpImeWatchdog(cm));
+  // Focus leaving mid-conversion means the IME was abandoned without a
+  // compositionend; clear on the next tick so saving/marking resume.
+  input.addEventListener('blur',()=>{setTimeout(()=>forceEndImeComposition(cm),0)});
   input.addEventListener('compositionend',()=>{
-    if(vimCompositionWatchdog.has(cm)){clearTimeout(vimCompositionWatchdog.get(cm));vimCompositionWatchdog.delete(cm)}
-    vimImeComposing.delete(cm);
-    vimImeEndedAt.set(cm,performance.now());
-    // Let Chromium and the IME finish their final selection update before any
-    // autosave/marking work runs. Never collapse the conversion range here.
+    if(imeCompositionWatchdog.has(cm)){clearTimeout(imeCompositionWatchdog.get(cm));imeCompositionWatchdog.delete(cm)}
+    imeComposing.delete(cm);
     setTimeout(()=>{
       try{
         if(cm===editor)refreshSourceFrontmatterStyle();
@@ -654,32 +642,30 @@ function bindVimIme(cm){
       }catch(_){resolveImeIdleWaiters()}
     },0);
   });
-  // NORMAL mode must never accept native text insertion (including IME,
-  // paste or drag/drop). Vim editing commands are programmatic and do not
-  // depend on beforeinput, so this does not block dd/x/p/etc.
-  input.addEventListener('beforeinput',e=>{
-    if(vimInputMode==='normal')e.preventDefault();
-  });
-  input.addEventListener('paste',e=>{if(vimInputMode==='normal')e.preventDefault()});
-  input.addEventListener('drop',e=>{if(vimInputMode==='normal')e.preventDefault()});
 }
 function applyEditorReadOnly(){
   const editable=!!currentData?.can_edit;
-  // Other users' notes remain fully navigable/selectable; only mutation is blocked.
-  // `true` keeps a visible cursor, unlike CodeMirror's `nocursor`.
+  // Other users' notes stay navigable/selectable; only mutation is blocked.
+  // The vim keymap still allows NORMAL-mode motions while readOnly.
   const ro=editable?false:true;
   editor.setOption('readOnly',ro);
   bodyEditor.setOption('readOnly',ro);
+}
+function vimModeLabel(){
+  const v=editor&&editor.state&&editor.state.vim;
+  if(!v||v.insertMode)return 'INSERT';
+  if(v.visualMode)return v.visualLine?'V-LINE':(v.visualBlock?'V-BLOCK':'VISUAL');
+  return 'NORMAL';
 }
 function updateVimUi(){
   const b=$('vimIndicator');if(!b)return;
   const available=!!currentData&&mode==='source';
   b.style.display=available?'inline-block':'none';
-  const label=vimInputMode!=='normal'?'INSERT':(vimVisual==='line'?'V-LINE':vimVisual==='char'?'VISUAL':'NORMAL');
+  const label=vimModeLabel();
   b.textContent='VIM '+label;
-  b.classList.toggle('normal',vimInputMode==='normal'&&!vimVisual);
-  b.classList.toggle('visual',vimInputMode==='normal'&&!!vimVisual);
-  b.classList.toggle('insert',vimInputMode!=='normal');
+  b.classList.toggle('normal',label==='NORMAL');
+  b.classList.toggle('visual',label.charAt(0)==='V');
+  b.classList.toggle('insert',label==='INSERT');
 }
 function bodyCursorMappedToSource(){
   const cur=bodyEditor.getCursor(),needle=bodyEditor.getLine(cur.line)||'';
@@ -698,7 +684,7 @@ function clearVimNormalLinkMarks(){
 }
 function refreshVimNormalLinks(){
   clearVimNormalLinkMarks();
-  if(vimInputMode!=='normal'||mode!=='source')return;
+  if(mode!=='source'||!isSourceNormal())return;
   const cm=editor;
   const re=/\[((?:\\.|[^\]\\])+)\]\(([^)\s]+\.md)(?:\s+"label-fixed")?\)/g;
   for(let lineNo=0;lineNo<cm.lineCount();lineNo++){
@@ -710,81 +696,6 @@ function refreshVimNormalLinks(){
       vimNormalLinkMarks.push(cm.markText({line:lineNo,ch:labelStart},{line:lineNo,ch:labelEnd},{className:'cm-live-link'}));
     }
   }
-}
-let vimScrollRaf=0;
-function vimEnsureCursorVisible(cm,center=false){
-  if(vimScrollRaf)cancelAnimationFrame(vimScrollRaf);
-  // One scroll decision, one frame. The old version re-ran three times across
-  // two frames; collapsed link marks and line wrapping recompute between
-  // frames, so each pass picked a different target and the viewport visibly
-  // jittered. Let CodeMirror's own scrollIntoView keep the caret in view
-  // (it no-ops when the caret is already visible, so no half-scrolls).
-  vimScrollRaf=requestAnimationFrame(()=>{
-    vimScrollRaf=0;
-    try{
-      const cur=cm.getCursor();
-      if(center){
-        const info=cm.getScrollInfo(),c=cm.charCoords(cur,'local');
-        const target=Math.max(0,(c.top+c.bottom-info.clientHeight)/2);
-        if(Math.abs(target-info.top)>8)cm.scrollTo(null,target);
-      }else{
-        cm.scrollIntoView(cur,80);
-      }
-    }catch(_){}
-  });
-}
-function vimMove(cm,command){cm.execCommand(command);vimEnsureCursorVisible(cm)}
-function setVimInputMode(next,cm=null){
-  const previousVimInputMode=vimInputMode;
-  const active=cm||editor;
-  const wantsNormal=next==='normal';
-  if(wantsNormal&&vimImeComposing.has(active)){
-    // A mode switch while the IME owns the selection is unsafe. The first
-    // Escape is allowed to finish/cancel conversion; the next exits INSERT.
-    return;
-  }
-  const normalCaret=wantsNormal?collapseVimSelection(active,active?.getCursor?.('head')):null;
-  vimInputMode=wantsNormal?'normal':'insert';vimVisual=null;vimVisualAnchor=null;vimPendingCommand='';
-  if(previousVimInputMode==='insert'&&vimInputMode==='normal'&&mode==='source'&&relationSyncPending){
-    flushAutosave(true).catch(console.error);
-  }
-  applyEditorReadOnly();updateVimUi();
-
-  if(vimInputMode==='normal'&&mode!=='source'){
-    clearLiveLinkMarks();clearVimNormalLinkMarks();
-    switchMode('source',{enterInsert:false});
-    return;
-  }
-
-  if(vimInputMode==='normal'){
-    clearLiveLinkMarks();
-    refreshVimNormalLinks();
-  }else{
-    clearVimNormalLinkMarks();
-    clearLiveLinkMarks();
-  }
-  if(currentData&&mode==='source'){try{
-    active.focus();
-    if(vimInputMode==='normal'&&normalCaret){
-      // CodeMirror and Chromium can each perform one late selection update
-      // after IME/read-mode transitions. Collapse on two animation frames so
-      // NORMAL always ends with one caret, never a selected Japanese range.
-      collapseVimSelection(active,normalCaret);
-      requestAnimationFrame(()=>{
-        collapseVimSelection(active,normalCaret);
-        requestAnimationFrame(()=>{collapseVimSelection(active,normalCaret);vimEnsureCursorVisible(active)});
-      });
-      // A late browser-level selection repaint can still land after the two
-      // frames above and CodeMirror never learns about it, so h/j/k/l cannot
-      // clear it and only a mouse click does. One more delayed collapse plus a
-      // re-focus of the hidden input closes that window.
-      setTimeout(()=>{
-        if(mode!=='source'||vimInputMode!=='normal')return;
-        collapseVimSelection(active,normalCaret);
-        try{const inp=active.getInputField&&active.getInputField();if(inp)inp.focus({preventScroll:true})}catch(_){}
-      },60);
-    }else vimEnsureCursorVisible(active);
-  }catch(_){} }
 }
 function updateEditPermissions(){
   const editable=!!currentData?.can_edit;
@@ -808,11 +719,27 @@ const editor=CodeMirror.fromTextArea($('source'),{
   styleActiveLine:false,
   indentUnit:2,
   tabSize:2,
+  // Modal editing is CodeMirror's official vim keymap. It owns key handling,
+  // IME, selection and cursor-follow scrolling.
+  keyMap:'vim',
   extraKeys:{
-    'Enter':'newlineAndIndentContinueMarkdownList',
+    // Markdown list continuation only in INSERT; in NORMAL let vim have Enter.
+    'Enter':cm=>{
+      const v=cm.state.vim;
+      if(v&&!v.insertMode)return CodeMirror.Pass;
+      return cm.execCommand('newlineAndIndentContinueMarkdownList');
+    },
     'Ctrl-S':()=>flushAutosave(true).catch(console.error),
     'Cmd-S':()=>flushAutosave(true).catch(console.error)
   }
+});
+if(window.CodeMirror&&CodeMirror.Vim)registerVimLeaderCommands();
+// Keep the mode indicator and the NORMAL-mode link-label collapsing in sync
+// with the addon's own mode state instead of a parallel variable.
+editor.on('vim-mode-change',()=>{
+  updateVimUi();
+  if(mode==='source'&&isSourceNormal())refreshVimNormalLinks();else clearVimNormalLinkMarks();
+  if(isSourceNormal()&&relationSyncPending&&mode==='source')flushAutosave(true).catch(console.error);
 });
 const bodyEditor=CodeMirror.fromTextArea($('bodySource'),{
   mode:{name:'markdown',highlightFormatting:true},
@@ -830,10 +757,10 @@ const bodyEditor=CodeMirror.fromTextArea($('bodySource'),{
 });
 // Keep the body editor as ordinary document flow: the page scrolls, not a nested CodeMirror pane.
 bodyEditor.setSize(null,'auto');
-bindVimIme(editor);bindVimIme(bodyEditor);
+bindImeTracking(editor);bindImeTracking(bodyEditor);
 let sourceFrontmatterStyledLines=[];
 function refreshSourceFrontmatterStyle(){
-  if(typeof editor!=='undefined'&&vimImeComposing.has(editor))return;
+  if(typeof editor!=='undefined'&&imeComposing.has(editor))return;
   for(const line of sourceFrontmatterStyledLines){
     try{editor.removeLineClass(line,'wrap','nnFrontmatterLine')}catch(_){}
   }
@@ -866,16 +793,16 @@ function refreshLiveLinks(){
   activeLiveLinkKey=null;
   // INSERT is raw: [表示名](file.md) remains fully visible.
   // NORMAL uses Vim marks so only 表示名 is visible.
-  if(vimInputMode==='normal')refreshVimNormalLinks();
+  if(isSourceNormal())refreshVimNormalLinks();
 }
 bodyEditor.on('change',()=>{
   if(loadingDoc)return;
   editRevision++;dirty=true;
-  if(!vimImeComposing.has(bodyEditor))queueAutosave(550);
+  if(!imeComposing.has(bodyEditor))queueAutosave(550);
   queueTopicWidgets();
   // Existing CodeMirror marks track edits automatically. Re-scan only after
   // a short idle period so normal typing/IME input is never interrupted.
-  if(!vimImeComposing.has(bodyEditor))scheduleLiveLinkRefresh(350);
+  if(!imeComposing.has(bodyEditor))scheduleLiveLinkRefresh(350);
 });
 editor.on('beforeChange',(cm,change)=>{
   if(loadingDoc||!sourceAutoEdgeLines.size)return;
@@ -886,7 +813,7 @@ editor.on('beforeChange',(cm,change)=>{
   }
 });
 editor.on('change',()=>{
-  const composing=vimImeComposing.has(editor);
+  const composing=imeComposing.has(editor);
   if(!composing){refreshSourceFrontmatterStyle();refreshSourceAutoEdgeStyle()}
   if(loadingDoc||mode!=='source')return;
   editRevision++;dirty=true;
@@ -1182,12 +1109,12 @@ function setEditorsFromRaw(content,{keepBody=false}={}){
   const projected=sourceProjectionWithBoxEdges(raw);
   relationSyncPending=false;
   // A document swap invalidates any in-progress visual selection.
-  vimVisual=null;vimVisualAnchor=null;
+  try{if(window.CodeMirror&&CodeMirror.Vim&&editor.state.vim&&editor.state.vim.visualMode)CodeMirror.Vim.exitVisualMode(editor,false)}catch(_){}
   currentStructureSignature=structureSignatureFromText(raw);
   loadingDoc=true;clearLiveLinkMarks();editor.setValue(projected);refreshSourceFrontmatterStyle();refreshSourceAutoEdgeStyle();
   if(!keepBody)bodyEditor.setValue(bodyWithoutPureEdgeSections(raw));
   bodyEditor.setSize(null,'auto');
-  loadingDoc=false;scheduleLiveLinkRefresh(0);if(vimInputMode==='normal'&&mode==='source')setTimeout(refreshVimNormalLinks,0);
+  loadingDoc=false;scheduleLiveLinkRefresh(0);if(mode==='source'&&isSourceNormal())setTimeout(refreshVimNormalLinks,0);
 }
 function editorText(){return stripAuto(editor.getValue());}
 function normRel(x){return String(x||'').replace(/\s+/g,'').toLowerCase()}
@@ -1728,7 +1655,7 @@ function setModeVisibility(next){
   $('organizeWrap').style.display=next==='organize'?'block':'none';
   // Hiding the Source pane mid-conversion is a common way to lose
   // compositionend; never let that strand the IME flag on the source editor.
-  if(next!=='source')setTimeout(()=>forceEndVimComposition(editor),0);
+  if(next!=='source')setTimeout(()=>forceEndImeComposition(editor),0);
   updateViewModeToggle();updateVimUi();
 }
 function editorHasDomFocus(){
@@ -1743,7 +1670,6 @@ function focusSourceEditor(){
   const tryFocus=()=>{
     if(mode!=='source')return;
     try{editor.refresh();editor.focus();const inp=editor.getInputField&&editor.getInputField();if(inp)inp.focus({preventScroll:true});}catch(_){}
-    vimEnsureCursorVisible(editor,true);
   };
   tryFocus();
   requestAnimationFrame(()=>{
@@ -1752,56 +1678,42 @@ function focusSourceEditor(){
   });
 }
 function applySourceInsertState(focus){
-  // Source is the writing surface: entering it must accept ordinary keyboard/
-  // IME input immediately. Runs synchronously so a slow or failed autosave can
-  // never strand the editor in NORMAL, where `beforeinput` blocks every key.
-  vimVisual=null;vimVisualAnchor=null;vimInputMode='insert';vimPendingCommand='';
-  clearVimNormalLinkMarks();applyEditorReadOnly();updateVimUi();
-  if(focus&&mode==='source')focusSourceEditor();
+  // Source is the writing surface: entering it drops straight into INSERT so
+  // ordinary keyboard/IME input works immediately.
+  applyEditorReadOnly();
+  if(mode==='source'){
+    sourceEnterInsert();
+    if(focus)focusSourceEditor();
+  }
+  updateVimUi();
 }
 function switchMode(next,opts={}){
   next=next==='source'?'source':'organize';
-  const forceNormal=!!opts.forceNormal;
-  // Explicit transitions into Source default to INSERT. Only opts.enterInsert
-  // === false (Esc pressed from Organize) keeps NORMAL.
-  const enterInsert=next==='source'&&!forceNormal&&opts.enterInsert!==false;
-  if(enterInsert)applySourceInsertState(false);
+  // Explicit transitions into Source default to INSERT. Only opts.keepNormal
+  // (Esc pressed from Organize) leaves it in NORMAL.
+  const enterInsert=next==='source'&&opts.keepNormal!==true;
   if(modeSwitchPromise){
-    // A switch is already in flight. Do not drop a fresh explicit edit intent:
-    // re-assert INSERT and focus once the running transition settles.
     if(enterInsert)modeSwitchPromise.then(()=>{if(mode==='source')applySourceInsertState(true)}).catch(()=>{});
     return modeSwitchPromise;
   }
   modeSwitchPromise=(async()=>{
     await waitForImeIdle();
-    // Freeze Vim input before the asynchronous save. Otherwise a user can type
-    // more characters while Ctrl+E is waiting for disk/network I/O and those
-    // characters belong to neither side of the transition cleanly.
-    if(forceNormal){
-      const active=mode==='source'?editor:bodyEditor;
-      const caret=mode==='source'?collapseVimSelection(editor,editor.getCursor('head')):null;
-      vimVisual=null;vimVisualAnchor=null;vimInputMode='normal';vimPendingCommand='';
-      clearLiveLinkMarks();clearVimNormalLinkMarks();applyEditorReadOnly();updateVimUi();
-      if(mode==='source'&&caret){collapseVimSelection(editor,caret)}
-    }
     // A failed autosave (offline / auth) must not abort the transition; the
     // save retries on its own and the user still gets a usable editor.
     try{await flushAutosave(true)}catch(_){}
-    if(enterInsert)applySourceInsertState(false);
     if(next===mode){
       setModeVisibility(next);
-      if(next==='source')setTimeout(()=>{if(mode!=='source')return;if(vimInputMode==='normal'&&!vimVisual)refreshVimNormalLinks();else clearVimNormalLinkMarks();focusSourceEditor()},0);
-      else if(forceNormal)refreshVimNormalLinks();
+      if(next==='source')setTimeout(()=>{if(mode!=='source')return;if(enterInsert)sourceEnterInsert();isSourceNormal()?refreshVimNormalLinks():clearVimNormalLinkMarks();focusSourceEditor()},0);
       return;
     }
     mode=next;setModeVisibility(next);organizeLinkIndex=-1;organizeSectionIndex=-1;
     if(next==='organize'){
-      vimVisual=null;vimVisualAnchor=null;
       clearVimNormalLinkMarks();renderOrganize();$('organizeView').tabIndex=-1;setTimeout(()=>{if(mode==='organize')$('organizeView').focus({preventScroll:true})},0);
     }else{
       setTimeout(()=>{
         if(mode!=='source')return;
-        if(vimInputMode==='normal'&&!vimVisual)refreshVimNormalLinks();else clearVimNormalLinkMarks();
+        if(enterInsert)sourceEnterInsert();
+        isSourceNormal()?refreshVimNormalLinks():clearVimNormalLinkMarks();
         focusSourceEditor();
       },0);
     }
@@ -1828,18 +1740,18 @@ function vimJumpLink(cm,dir){
   let target=null;
   if(currentIndex>=0){
     const nextIndex=currentIndex+(dir>0?1:-1);
-    if(nextIndex<0||nextIndex>=links.length){status(dir>0?'最後のリンクです':'最初のリンクです');vimEnsureCursorVisible(cm);return}
+    if(nextIndex<0||nextIndex>=links.length){status(dir>0?'最後のリンクです':'最初のリンクです');return}
     target=links[nextIndex];
   }else{
     const pos=cm.indexFromPos(cur);
     const withIndex=links.map(x=>({...x,index:cm.indexFromPos({line:x.line,ch:x.start})}));
     if(dir>0)target=withIndex.find(x=>x.index>pos)||null;
     else target=[...withIndex].reverse().find(x=>x.index<pos)||null;
-    if(!target){status(dir>0?'最後のリンクです':'最初のリンクです');vimEnsureCursorVisible(cm);return}
+    if(!target){status(dir>0?'最後のリンクです':'最初のリンクです');return}
   }
   cm.setCursor({line:target.line,ch:target.labelStart});
   if(cm===bodyEditor)scheduleLiveLinkRefresh(0);
-  vimEnsureCursorVisible(cm,true);
+  cm.scrollIntoView(cm.getCursor(),80);
 }
 
 function vimOpenCursorLink(cm){
@@ -1847,245 +1759,58 @@ function vimOpenCursorLink(cm){
   if(hit){openFile(hit.file).catch(e=>status(e.message));return true}
   return false;
 }
-function vimDeleteLine(cm){
-  const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';vimRegister=line+'\n';vimRegisterLinewise=true;
-  const last=cm.lineCount()-1;
-  if(last===0)cm.replaceRange('',{line:0,ch:0},{line:0,ch:line.length},'+vim');
-  else if(cur.line<last)cm.replaceRange('',{line:cur.line,ch:0},{line:cur.line+1,ch:0},'+vim');
-  else cm.replaceRange('',{line:cur.line-1,ch:(cm.getLine(cur.line-1)||'').length},{line:cur.line,ch:line.length},'+vim');
-  cm.setCursor({line:Math.min(cur.line,cm.lineCount()-1),ch:0});
-}
-function vimYankLine(cm){const cur=cm.getCursor();vimRegister=(cm.getLine(cur.line)||'')+'\n';vimRegisterLinewise=true;status('1行コピー')}
-function vimPaste(cm,before=false){
-  if(!vimRegister)return;
-  const cur=cm.getCursor();
-  if(vimRegisterLinewise){const line=before?cur.line:cur.line+1;cm.replaceRange(vimRegister,{line:Math.min(line,cm.lineCount()),ch:0},null,'+vim');cm.setCursor({line:Math.min(line,cm.lineCount()-1),ch:0})}
-  else cm.replaceRange(vimRegister,cur,null,'+vim');
-}
 async function toggleTaskByOrdinal(ord){
   if(!currentData?.can_edit)return;
   const lines=editor.getValue().split('\n');let seen=0;
   for(let i=0;i<lines.length;i++){if(!taskLineInfo(lines[i]))continue;if(seen++!==ord)continue;lines[i]=lines[i].replace(/\[([ xX])\]/,m=>/x/i.test(m)?'[ ]':'[x]');editor.setValue(lines.join('\n'));dirty=true;queueAutosave(80);if(mode==='organize')renderOrganize();return}
 }
-function toggleTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(!taskLineInfo(line)){status('この行はチェックボックスではありません');return false}cm.replaceRange(line.replace(/\[([ xX])\]/,m=>/x/i.test(m)?'[ ]':'[x]'),{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(cur.ch,cm.getLine(cur.line).length)});vimEnsureCursorVisible(cm);return true}
-function makeTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(taskLineInfo(line)){status('すでにチェックボックスです');return}let next;if(!line.trim())next='- [ ] ';else if(/^\s*[-*+]\s+/.test(line))next=line.replace(/^(\s*[-*+]\s+)/,'$1[ ] ');else next='- [ ] '+line;cm.replaceRange(next,{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(next.length,Math.max(6,cur.ch+6))});vimEnsureCursorVisible(cm)}
-function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLine(cur.line)||'').trim()?'\n':'';const md=before+'| 列1 | 列2 |\n| --- | --- |\n|  |  |';cm.replaceSelection(md,'end','+table');const pos=cm.getCursor();cm.setCursor({line:Math.max(0,pos.line),ch:2});vimEnsureCursorVisible(cm,true)}
-function tableCellMove(cm,dir){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(!line.includes('|'))return false;const bars=[];for(let i=0;i<line.length;i++)if(line[i]==='|')bars.push(i);if(bars.length<2)return false;const cells=[];for(let i=0;i<bars.length-1;i++)cells.push({line:cur.line,ch:Math.min(line.length,bars[i]+2)});let idx=0;for(let i=0;i<cells.length;i++)if(cells[i].ch<=cur.ch)idx=i;let targetIdx=idx+dir;if(targetIdx>=0&&targetIdx<cells.length){cm.setCursor(cells[targetIdx]);vimEnsureCursorVisible(cm);return true}const nextLine=cur.line+(dir>0?1:-1);if(nextLine<0||nextLine>=cm.lineCount())return false;const nl=cm.getLine(nextLine)||'';if(!nl.includes('|'))return false;const nb=[];for(let i=0;i<nl.length;i++)if(nl[i]==='|')nb.push(i);if(nb.length<2)return false;cm.setCursor({line:nextLine,ch:dir>0?Math.min(nl.length,nb[0]+2):Math.min(nl.length,nb[nb.length-2]+2)});vimEnsureCursorVisible(cm);return true}
-function vimPosCmp(a,b){return (a.line-b.line)||(a.ch-b.ch)}
-function vimSelExtend(cm){
-  // Re-project the visual selection from the fixed anchor to the live head,
-  // keeping the caret on the moving end so the next motion continues cleanly.
-  const anchor=vimVisualAnchor;if(!anchor)return;
-  const head=cm.getCursor('head');
-  if(vimVisual==='line'){
-    const top=Math.min(anchor.line,head.line),bot=Math.max(anchor.line,head.line);
-    const a={line:top,ch:0},b={line:bot,ch:(cm.getLine(bot)||'').length};
-    if(head.line>=anchor.line)cm.setSelection(a,b,{scroll:false});else cm.setSelection(b,a,{scroll:false});
-  }else if(vimPosCmp(anchor,head)<=0){
-    const to={line:head.line,ch:Math.min((cm.getLine(head.line)||'').length,head.ch+1)};
-    cm.setSelection(anchor,to,{scroll:false});
-  }else{
-    const from={line:anchor.line,ch:Math.min((cm.getLine(anchor.line)||'').length,anchor.ch+1)};
-    cm.setSelection(from,head,{scroll:false});
-  }
+function toggleTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(!taskLineInfo(line)){status('この行はチェックボックスではありません');return false}cm.replaceRange(line.replace(/\[([ xX])\]/,m=>/x/i.test(m)?'[ ]':'[x]'),{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(cur.ch,cm.getLine(cur.line).length)});cm.scrollIntoView(cm.getCursor(),80);return true}
+function makeTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(taskLineInfo(line)){status('すでにチェックボックスです');return}let next;if(!line.trim())next='- [ ] ';else if(/^\s*[-*+]\s+/.test(line))next=line.replace(/^(\s*[-*+]\s+)/,'$1[ ] ');else next='- [ ] '+line;cm.replaceRange(next,{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(next.length,Math.max(6,cur.ch+6))});cm.scrollIntoView(cm.getCursor(),80)}
+function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLine(cur.line)||'').trim()?'\n':'';const md=before+'| 列1 | 列2 |\n| --- | --- |\n|  |  |';cm.replaceSelection(md,'end','+table');const pos=cm.getCursor();cm.setCursor({line:Math.max(0,pos.line),ch:2});cm.scrollIntoView(cm.getCursor(),80)}
+// ---- Custom note operations, as <leader> commands on the vim keymap ----
+// The leader is `\` (vim's traditional <leader>): it has no default binding in
+// the addon, so `\`+key resolves cleanly. <Space> can't be used here because the
+// addon resolves its built-in <Space>→l before any `<Space>xx` sequence.
+// NORMAL mode: \n new node, \p add Parent edge, \c add Child edge, \d delete
+// note, \x toggle task, \t make task, \T table, \e edges dialog, \y copy note
+// link, \l / \h next / prev link, \o open link, \b navigate back.
+let vimLeaderCommandsRegistered=false;
+function registerVimLeaderCommands(){
+  if(vimLeaderCommandsRegistered||!window.CodeMirror||!CodeMirror.Vim)return;
+  vimLeaderCommandsRegistered=true;
+  const Vim=CodeMirror.Vim;
+  const canEdit=()=>!!currentData?.can_edit;
+  const defs={
+    nnNewNode:()=>openNewNodeDialog(),
+    nnEdgeOut:()=>openEdgeDialog('outgoing',true).catch(err=>status(err.message)),
+    nnEdgeIn:()=>openEdgeDialog('incoming',true).catch(err=>status(err.message)),
+    nnDeleteNote:()=>{if(canEdit()&&!currentData?.is_index)deleteCurrentNote().catch(err=>status(err.message))},
+    nnToggleTask:cm=>{if(canEdit())toggleTaskAtCursor(cm)},
+    nnMakeTask:cm=>{if(canEdit())makeTaskAtCursor(cm)},
+    nnTable:cm=>{if(canEdit())insertMarkdownTable(cm)},
+    nnEdgesDialog:cm=>openOrganizeEdgesDialog(vimLinkFileAtCursor(cm)).catch(err=>status(err.message)),
+    nnCopyLink:()=>copyCurrentNoteLink().catch(err=>status(err.message)),
+    nnLinkNext:cm=>vimJumpLink(cm,1),
+    nnLinkPrev:cm=>vimJumpLink(cm,-1),
+    nnOpenLink:cm=>{if(!vimOpenCursorLink(cm))status('カーソル位置にリンクがありません')},
+    nnBack:()=>navigateBack().catch(console.error)
+  };
+  for(const name in defs)Vim.defineAction(name,defs[name]);
+  const map=(key,action)=>Vim.mapCommand('\\'+key,'action',action,{},{context:'normal'});
+  map('n','nnNewNode');map('p','nnEdgeOut');map('c','nnEdgeIn');map('d','nnDeleteNote');
+  map('x','nnToggleTask');map('t','nnMakeTask');map('T','nnTable');map('e','nnEdgesDialog');
+  map('y','nnCopyLink');map('l','nnLinkNext');map('h','nnLinkPrev');map('o','nnOpenLink');
+  map('b','nnBack');
 }
-function vimVisualMotion(cm,command){
-  // CodeMirror motions collapse a non-empty selection to an edge instead of
-  // moving one unit, so collapse to the live head first, then re-extend.
-  const head=cm.getCursor('head');
-  cm.setSelection(head,head,{scroll:false});
-  cm.execCommand(command);
-  vimSelExtend(cm);
-  vimEnsureCursorVisible(cm);
-}
-function vimVisualEnter(cm,kind){
-  if(vimInputMode!=='normal'||mode!=='source')return;
-  if(vimVisual===kind){vimVisualExit(cm);return}
-  const keepAnchor=vimVisual?vimVisualAnchor:cm.getCursor('head');
-  vimVisual=kind;vimVisualAnchor=keepAnchor||cm.getCursor('head');
-  clearVimNormalLinkMarks();
-  vimSelExtend(cm);updateVimUi();vimEnsureCursorVisible(cm);
-}
-function vimVisualExit(cm){
-  const head=cm.getCursor('head');
-  vimVisual=null;vimVisualAnchor=null;
-  collapseVimSelection(cm,head);
-  updateVimUi();
-  if(vimInputMode==='normal'&&mode==='source')refreshVimNormalLinks();
-}
-function vimVisualYank(cm){
-  const linewise=vimVisual==='line';
-  const text=cm.getSelection()||'';
-  vimRegister=linewise?(text.endsWith('\n')?text:text+'\n'):text;
-  vimRegisterLinewise=linewise;
-  const sel=cm.listSelections()[0];
-  const start=sel?(vimPosCmp(sel.anchor,sel.head)<=0?sel.anchor:sel.head):cm.getCursor();
-  vimVisualExit(cm);
-  cm.setCursor(linewise?{line:start.line,ch:0}:start);
-  status(linewise?'コピーしました（行）':'コピーしました');
-}
-function vimVisualDelete(cm,thenInsert){
-  if(!currentData?.can_edit){vimVisualExit(cm);return}
-  const linewise=vimVisual==='line';
-  const sel=cm.listSelections()[0];
-  let from=cm.getCursor(),to=from;
-  if(sel){from=vimPosCmp(sel.anchor,sel.head)<=0?sel.anchor:sel.head;to=(from===sel.anchor)?sel.head:sel.anchor;}
-  const text=cm.getSelection()||'';
-  vimRegister=linewise?(text.endsWith('\n')?text:text+'\n'):text;
-  vimRegisterLinewise=linewise;
-  vimVisual=null;vimVisualAnchor=null;updateVimUi();
-  if(linewise){
-    const a=from.line,b=to.line,last=cm.lineCount()-1;
-    if(thenInsert){
-      cm.replaceRange('',{line:a,ch:0},{line:b,ch:(cm.getLine(b)||'').length},'+vim');
-      cm.setCursor({line:a,ch:0});setVimInputMode('insert',cm);return;
-    }
-    if(a<=0&&b>=last)cm.replaceRange('',{line:0,ch:0},{line:last,ch:(cm.getLine(last)||'').length},'+vim');
-    else if(b<last)cm.replaceRange('',{line:a,ch:0},{line:b+1,ch:0},'+vim');
-    else cm.replaceRange('',{line:a-1,ch:(cm.getLine(a-1)||'').length},{line:b,ch:(cm.getLine(b)||'').length},'+vim');
-    cm.setCursor({line:Math.min(a,cm.lineCount()-1),ch:0});
-  }else{
-    cm.replaceRange('',from,to,'+vim');cm.setCursor(from);
-    if(thenInsert){setVimInputMode('insert',cm);return}
-  }
-  if(vimInputMode==='normal'&&mode==='source')refreshVimNormalLinks();
-  vimEnsureCursorVisible(cm);
-}
-function handleVimKey(cm,e,viewName){
-  if(mode!==viewName)return;
-  const editable=!!currentData?.can_edit;
-  if(vimInputMode==='insert'){
-    // Do not steal keys from an active Japanese/IME composition.  Some
-    // browsers report keyCode 229 instead of a normal key while composing.
-    if(e.isComposing||e.keyCode===229)return;
-    // A real keydown with isComposing===false proves no composition is running.
-    // If the flag is still set, a compositionend was dropped: clear it (without
-    // swallowing this key) and let the keystroke through instead of freezing.
-    if(vimImeComposing.has(cm))forceEndVimComposition(cm,{stale:true});
-    if(e.key==='Escape'){
-      const ended=Number(vimImeEndedAt.get(cm)||0);
-      if(ended&&performance.now()-ended<90){
-        // Some Japanese IMEs emit compositionend immediately before the
-        // Escape keydown that closed conversion. Consume that Escape only;
-        // a deliberate next Escape enters NORMAL.
-        e.preventDefault();e.stopPropagation();return;
-      }
-      e.preventDefault();e.stopPropagation();
-      setVimInputMode('normal',cm);
-      return;
-    }
-    if(e.key==='Tab'&&tableCellMove(cm,e.shiftKey?-1:1)){e.preventDefault();e.stopPropagation();return}
-    if(e.key==='Tab'){
-      // Tab uses the same link-to-link navigation in both editor input modes.
-      // Leave ordinary Tab behavior intact when the document has no links.
-      if(vimAllLinks(cm).length){e.preventDefault();e.stopPropagation();vimJumpLink(cm,e.shiftKey?-1:1);return}
-    }
-    return;
-  }
-  // NORMAL mode is available even on somebody else's read-only note.
-  // Navigation/copy commands work there; mutating Vim commands do not.
-  if(e.ctrlKey&&String(e.key).toLowerCase()==='r'){
-    if(editable){e.preventDefault();cm.execCommand('redo');vimEnsureCursorVisible(cm)}
-    return;
-  }
-  if(e.ctrlKey||e.metaKey||e.altKey)return;
-  const key=e.key;
-  e.preventDefault();e.stopPropagation();
-  if(key==='Escape'){vimPendingCommand='';if(vimVisual)vimVisualExit(cm);return}
-  // ---- VISUAL sub-mode: motions extend the selection; y/d/c/x operate on it ----
-  if(vimVisual){
-    if(key==='g'){if(vimPendingCommand==='g'){vimPendingCommand='';vimVisualMotion(cm,'goDocStart')}else vimPendingCommand='g';return}
-    vimPendingCommand='';
-    if(key==='v'){vimVisualEnter(cm,'char');return}
-    if(key==='V'){vimVisualEnter(cm,'line');return}
-    if(key==='h'||key==='ArrowLeft'){vimVisualMotion(cm,'goCharLeft');return}
-    if(key==='j'||key==='ArrowDown'){vimVisualMotion(cm,'goLineDown');return}
-    if(key==='k'||key==='ArrowUp'){vimVisualMotion(cm,'goLineUp');return}
-    if(key==='l'||key==='ArrowRight'){vimVisualMotion(cm,'goCharRight');return}
-    if(key==='w'){vimVisualMotion(cm,'goWordRight');return}
-    if(key==='b'){vimVisualMotion(cm,'goWordLeft');return}
-    if(key==='0'){vimVisualMotion(cm,'goLineStart');return}
-    if(key==='^'){vimVisualMotion(cm,'goLineStartSmart');return}
-    if(key==='$'){vimVisualMotion(cm,'goLineEnd');return}
-    if(key==='G'){vimVisualMotion(cm,'goDocEnd');return}
-    if(key==='o'){
-      const h=cm.getCursor('head'),a=vimVisualAnchor||h;
-      vimVisualAnchor={line:h.line,ch:h.ch};
-      cm.setSelection(h,a,{scroll:false});vimSelExtend(cm);vimEnsureCursorVisible(cm);return;
-    }
-    if(key==='y'||key==='Enter'){vimVisualYank(cm);return}
-    if(key==='d'||key==='x'||key==='Delete'){vimVisualDelete(cm,false);return}
-    if(key==='c'||key==='s'){vimVisualDelete(cm,true);return}
-    return; // any other key: stay in VISUAL
-  }
-  if(key==='ArrowLeft'){vimPendingCommand='';vimMove(cm,'goCharLeft');return}
-  if(key==='ArrowDown'){vimPendingCommand='';vimMove(cm,'goLineDown');return}
-  if(key==='ArrowUp'){vimPendingCommand='';vimMove(cm,'goLineUp');return}
-  if(key==='ArrowRight'){vimPendingCommand='';vimMove(cm,'goCharRight');return}
-  if(key==='Tab'){vimPendingCommand='';vimJumpLink(cm,e.shiftKey?-1:1);return}
-  if(key==='Enter'){vimPendingCommand='';if(!vimOpenCursorLink(cm))vimMove(cm,'goLineDown');return}
-  if(key==='Backspace'){vimPendingCommand='';navigateBack().catch(console.error);return}
-  if(vimPendingCommand==='g'){vimPendingCommand='';if(key==='g')vimMove(cm,'goDocStart');return}
-  if(vimPendingCommand==='d'){vimPendingCommand='';if(key==='d'&&editable){vimDeleteLine(cm);vimEnsureCursorVisible(cm)}return}
-  if(vimPendingCommand==='y'){
-    vimPendingCommand='';
-    if(key==='n'){copyCurrentNoteLink().catch(err=>status(err.message));return}
-    if(key==='y'){vimYankLine(cm);return}
-    return;
-  }
-  if(vimPendingCommand==='n'){
-    vimPendingCommand='';
-    if(key==='n'){openNewNodeDialog();return}
-    if(key==='p'){openEdgeDialog('outgoing',true).catch(err=>status(err.message));return}
-    if(key==='c'){openEdgeDialog('incoming',true).catch(err=>status(err.message));return}
-    if(key==='x'&&editable){toggleTaskAtCursor(cm);return}
-    if(key==='t'&&editable){makeTaskAtCursor(cm);return}
-    if(key==='d'&&currentData?.can_edit&&!currentData?.is_index){deleteCurrentNote().catch(err=>status(err.message));return}
-    return;
-  }
-  if(vimPendingCommand==='m'){vimPendingCommand='';if(key==='t'&&editable){insertMarkdownTable(cm);return}return}
-  if(vimPendingCommand==='e'){vimPendingCommand='';if(key==='m'){openOrganizeEdgesDialog(vimLinkFileAtCursor(cm)).catch(err=>status(err.message));return}return}
-  if(key==='g'){vimPendingCommand='g';return}
-  if(key==='d'){vimPendingCommand='d';return}
-  if(key==='y'){vimPendingCommand='y';return}
-  if(key==='n'){vimPendingCommand='n';return}
-  if(key==='m'){vimPendingCommand='m';return}
-  if(key==='e'){vimPendingCommand='e';return}
-  if(key==='h'){vimMove(cm,'goCharLeft');return}
-  if(key==='j'){vimMove(cm,'goLineDown');return}
-  if(key==='k'){vimMove(cm,'goLineUp');return}
-  if(key==='l'){vimMove(cm,'goCharRight');return}
-  if(key==='w'){vimMove(cm,'goWordRight');return}
-  if(key==='b'){vimMove(cm,'goWordLeft');return}
-  if(key==='0'){vimMove(cm,'goLineStart');return}
-  if(key==='^'){vimMove(cm,'goLineStartSmart');return}
-  if(key==='$'){vimMove(cm,'goLineEnd');return}
-  if(key==='G'){vimMove(cm,'goDocEnd');return}
-  if(key==='v'){vimVisualEnter(cm,'char');return}
-  if(key==='V'){vimVisualEnter(cm,'line');return}
-  if(!editable)return;
-  if(key==='i'){setVimInputMode('insert',cm);return}
-  if(key==='a'){cm.execCommand('goCharRight');setVimInputMode('insert',cm);return}
-  if(key==='A'){cm.execCommand('goLineEnd');setVimInputMode('insert',cm);return}
-  if(key==='I'){cm.execCommand('goLineStartSmart');setVimInputMode('insert',cm);return}
-  if(key==='o'){cm.execCommand('goLineEnd');cm.replaceSelection('\n','end','+vim');setVimInputMode('insert',cm);return}
-  if(key==='O'){cm.execCommand('goLineStart');cm.replaceSelection('\n','start','+vim');cm.execCommand('goLineUp');setVimInputMode('insert',cm);return}
-  if(key==='x'){cm.execCommand('delCharAfter');vimEnsureCursorVisible(cm);return}
-  if(key==='u'){cm.execCommand('undo');vimEnsureCursorVisible(cm);return}
-  if(key==='p'){vimPaste(cm,false);vimEnsureCursorVisible(cm);return}
-  if(key==='P'){vimPaste(cm,true);vimEnsureCursorVisible(cm);return}
-}
-
-bodyEditor.on('keydown',(cm,e)=>handleVimKey(cm,e,'edit'));
-editor.on('keydown',(cm,e)=>handleVimKey(cm,e,'source'));
 $('vimIndicator').onclick=()=>{
-  // An explicit toggle click cannot coincide with a live IME conversion, so a
-  // still-set flag here is stale and would otherwise block the NORMAL switch.
-  forceEndVimComposition(editor,{stale:true});
-  setVimInputMode(vimInputMode==='normal'?'insert':'normal',editor);
+  try{
+    const v=editor.state.vim;
+    CodeMirror.Vim.handleKey(editor,v&&v.insertMode?'<Esc>':'i');
+  }catch(_){}
+  editor.focus();
 };
-$('taskBtn').onclick=async()=>{if(!currentData?.can_edit)return;await switchMode('source');makeTaskAtCursor(editor);setVimInputMode('insert',editor);editor.focus()};
-$('tableBtn').onclick=async()=>{if(!currentData?.can_edit)return;await switchMode('source');insertMarkdownTable(editor);setVimInputMode('insert',editor);editor.focus()};
+$('taskBtn').onclick=async()=>{if(!currentData?.can_edit)return;await switchMode('source');makeTaskAtCursor(editor);sourceEnterInsert();editor.focus()};
+$('tableBtn').onclick=async()=>{if(!currentData?.can_edit)return;await switchMode('source');insertMarkdownTable(editor);sourceEnterInsert();editor.focus()};
 $('viewModeToggle').addEventListener('click',toggleViewMode);
 window.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&String(e.key).toLowerCase()==='e'){
@@ -2282,8 +2007,8 @@ $('edgeNewBtn').onclick=async()=>{
 $('edgeForm').addEventListener('submit',async e=>{e.preventDefault();const relation=currentEdgeRelation();if(!relation){status('関係名を入力してください');return}const file=$('edgeTarget').value||'';const reference=$('edgePaste').value.trim();if(!file&&!reference){status('ノートを選択するかリンクを貼り付けてください');return}try{await flushAutosave();const d=await api('/api/edge-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({direction:edgeDialogMode,current,relation,file,reference})});currentData=d;setEditorsFromRaw(d.content);dirty=false;renderEditEdges();$('edgeDialog').close();await refreshFiles();queueGraph();if(mode==='organize')renderOrganize();status('エッジを追加しました')}catch(err){status(err.message)}});
 
 function refocusVimAfterDialog(){
-  if(vimInputMode!=='normal'||mode!=='source')return;
-  setTimeout(()=>{try{editor.focus();vimEnsureCursorVisible(editor)}catch(_){}},0);
+  if(mode!=='source'||!isSourceNormal())return;
+  setTimeout(()=>{try{editor.focus();editor.scrollIntoView(editor.getCursor(),80)}catch(_){}},0);
 }
 $('newDialog').addEventListener('close',refocusVimAfterDialog);
 $('edgeDialog').addEventListener('close',refocusVimAfterDialog);
@@ -2603,7 +2328,7 @@ $('likeBtn').onclick=async()=>{if(!current||currentData?.is_index)return;await t
 $('reportNoteBtn').onclick=async()=>{if(!current||currentData?.can_edit)return;if(!requireAuth('通報するにはログインまたは新規登録してください',()=>$('reportNoteBtn').click()))return;const reason=prompt('このノートの通報理由','荒らし・スパム')||'';if(!reason)return;try{await api('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:current,reason})});$('reportNoteBtn').textContent='通報済み';status('ノートを通報しました')}catch(e){status(e.message)}};
 $('uploadToggle').onchange=async()=>{if(!profile?.local_mode||!currentData?.can_edit)return;const desired=$('uploadToggle').checked;if(desired&&!profile?.web_connected){$('uploadToggle').checked=false;showAuth('このノートをWebで共有するにはWebアカウントへログインするか、新規作成してください',()=>{const t=$('uploadToggle');if(t){t.checked=true;t.dispatchEvent(new Event('change'))}});return}try{await flushAutosave();currentData=await api('/api/note-publish-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:current,upload_enabled:desired})});setEditorsFromRaw(currentData.content);dirty=false;updateEditPermissions();status(desired?'このノートをWeb共有対象にしました':'このノートはLocalのみにしました')}catch(e){$('uploadToggle').checked=!desired;status(e.message)}};
 $('publicVersionBtn').onclick=async()=>{if(!profile?.local_mode||!currentData?.can_edit||currentData?.is_index)return;const suggested=(currentData.title||'ノート')+'（公開版）';const title=prompt('公開版のタイトル',suggested);if(!title)return;try{await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation:'公開版'})});await refreshFiles();await openFile(d.file);await switchMode('source');status('公開版を作成しました。公開用の文章に書き換えてください')}catch(e){status(e.message)}};
-$('attachmentBtn').onclick=async()=>{if(!currentData?.can_edit){status('自分のノートでのみ添付できます');return}await switchMode('source');if(vimInputMode==='normal')setVimInputMode('insert',editor);editor.focus();$('attachmentInput').value='';$('attachmentInput').click()};
+$('attachmentBtn').onclick=async()=>{if(!currentData?.can_edit){status('自分のノートでのみ添付できます');return}await switchMode('source');sourceEnterInsert();editor.focus();$('attachmentInput').value='';$('attachmentInput').click()};
 $('attachmentInput').addEventListener('change',async()=>{const file=$('attachmentInput').files?.[0];if(!file||!currentData?.can_edit)return;try{const isImg=String(file.type||'').startsWith('image/');const data_url=isImg?await imageFileToJpegDataUrl(file):await fileToDataUrl(file);const uploadName=isImg?(String(file.name||'image').replace(/\.[^.]+$/,'')+'.jpg'):file.name;const d=await api('/api/upload-attachment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data_url,name:uploadName})});const cm=editor;cm.replaceSelection('\n'+d.markdown+'\n');dirty=true;queueAutosave(100);status('ファイルを添付しました')}catch(e){status(e.message)}finally{$('attachmentInput').value=''}});
 $('imageInput').addEventListener('change',async()=>{const file=$('imageInput').files?.[0];if(!file||!currentData?.can_edit)return;try{const data_url=await imageFileToJpegDataUrl(file);const d=await api('/api/upload-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data_url,name:file.name})});const cm=imageInsertEditor||editor;cm.replaceSelection('\n'+d.markdown+'\n');imageInsertEditor=null;dirty=true;queueAutosave(100);status('画像を添付しました')}catch(e){status(e.message)}finally{$('imageInput').value=''}});
 $('shareCommunityBtn').onclick=async()=>{if(!currentData?.can_edit||currentData?.is_index)return;const n=await loadShareCommunities();if(!n){status('参加中のコミュニティがありません');showSocial('communities');return}$('communityShareDialog').showModal()};
@@ -6378,6 +6103,10 @@ class Handler(BaseHTTPRequestHandler):
                     "meta.js": "application/javascript; charset=utf-8",
                     "continuelist.js": "application/javascript; charset=utf-8",
                     "active-line.js": "application/javascript; charset=utf-8",
+                    "searchcursor.js": "application/javascript; charset=utf-8",
+                    "dialog.js": "application/javascript; charset=utf-8",
+                    "dialog.css": "text/css; charset=utf-8",
+                    "vim.js": "application/javascript; charset=utf-8",
                 }
                 if name not in allowed:
                     return self.text_response(b"Not found", "text/plain", 404)

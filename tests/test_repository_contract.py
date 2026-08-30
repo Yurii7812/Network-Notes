@@ -70,59 +70,56 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("#organizeWrap,#organizeView{width:100%;max-width:100%}", mobile_rules)
         self.assertNotIn("grid-template-columns:minmax(0,1fr)", mobile_rules)
 
+    def test_source_editor_uses_official_codemirror_vim_keymap(self):
+        src = APP.read_text(encoding="utf-8")
+        # Modal editing is the vendored official addon, not a hand-rolled layer.
+        self.assertIn('<script src="/static/vim.js"></script>', src)
+        self.assertIn('"vim.js": "application/javascript; charset=utf-8",', src)
+        self.assertIn("keyMap:'vim',", src)
+        # The hand-rolled key handler and its parallel mode state are gone.
+        self.assertNotIn("function handleVimKey(", src)
+        self.assertNotIn("let vimInputMode=", src)
+        self.assertNotIn("function setVimInputMode(", src)
+        self.assertNotIn("function vimVisualMotion(", src)
+        self.assertNotIn("addEventListener('beforeinput'", src)
+        for f in ("static/vim.js", "static/dialog.js", "static/searchcursor.js"):
+            self.assertTrue((ROOT / f).is_file(), f)
+
     def test_ctrl_e_opens_source_in_insert_mode(self):
         src = APP.read_text(encoding="utf-8")
-        # Entering Source always defaults to INSERT; only an explicit
-        # enterInsert===false (Esc from Organize) keeps NORMAL.
-        self.assertIn(
-            "const enterInsert=next==='source'&&!forceNormal&&opts.enterInsert!==false;",
-            src,
-        )
-        # INSERT is asserted synchronously so a slow/failed autosave cannot
-        # strand the editor in NORMAL where beforeinput blocks every key.
-        self.assertIn("function applySourceInsertState(focus){", src)
-        self.assertIn("if(enterInsert)applySourceInsertState(false);", src)
-        self.assertIn("vimInputMode='insert';vimPendingCommand=''", src)
+        # Entering Source drops into INSERT via the addon's own state machine.
+        self.assertIn("const enterInsert=next==='source'&&opts.keepNormal!==true;", src)
+        self.assertIn("function sourceEnterInsert(){", src)
+        self.assertIn("CodeMirror.Vim.handleKey(editor,'i')", src)
+        self.assertIn("if(enterInsert)sourceEnterInsert();", src)
         self.assertIn("try{await flushAutosave(true)}catch(_){}", src)
-        self.assertIn("switchMode('source',{enterInsert:false});", src)
-        self.assertNotIn("toggleViewMode({forceNormal:true})", src)
 
-    def test_source_has_vim_visual_char_and_line_selection(self):
+    def test_note_operations_are_leader_vim_commands(self):
         src = APP.read_text(encoding="utf-8")
-        # v = charwise visual, V = linewise visual, like ordinary Vim.
-        self.assertIn("if(key==='v'){vimVisualEnter(cm,'char');return}", src)
-        self.assertIn("if(key==='V'){vimVisualEnter(cm,'line');return}", src)
-        # Motions extend the selection; y/d/c operate on it.
-        self.assertIn("function vimVisualMotion(cm,command){", src)
-        self.assertIn("if(key==='y'||key==='Enter'){vimVisualYank(cm);return}", src)
-        self.assertIn("if(key==='c'||key==='s'){vimVisualDelete(cm,true);return}", src)
-        # Esc leaves VISUAL back to a single caret.
-        self.assertIn("if(key==='Escape'){vimPendingCommand='';if(vimVisual)vimVisualExit(cm);return}", src)
+        # Project note-ops hang off the `\` leader so vim's own n/m/e/y/d/c are
+        # untouched. <Space> can't be the leader: the addon resolves its
+        # built-in <Space> before any multi-key sequence starting with it.
+        self.assertIn("function registerVimLeaderCommands(){", src)
+        self.assertIn("Vim.mapCommand('\\\\'+key,'action',action,{},{context:'normal'})", src)
+        self.assertIn("map('n','nnNewNode');", src)
+        self.assertIn("Vim.defineAction(name,defs[name])", src)
 
-    def test_normal_tab_link_navigation_keeps_cursor_visible(self):
+    def test_cursor_follow_scroll_is_delegated_to_codemirror(self):
         src = APP.read_text(encoding="utf-8")
-        self.assertIn("if(key==='Tab'){vimPendingCommand='';vimJumpLink", src)
-        self.assertNotIn("In INSERT, Tab follows", src)
-        self.assertIn("if(e.key==='Tab'&&tableCellMove", src)
-        # Cursor-follow scrolling is a single frame / single decision now; the
-        # old three-pass rAF loop caused visible viewport jitter.
-        self.assertIn("cm.scrollIntoView(cur,80);", src)
-        self.assertNotIn("vimScrollRaf=requestAnimationFrame(ensure)", src)
-        self.assertNotIn("Recalculate on two frames", src)
+        # No custom multi-frame scroll loop; CodeMirror's scrollIntoView only.
+        self.assertNotIn("function vimEnsureCursorVisible(", src)
+        self.assertNotIn("vimScrollRaf", src)
+        self.assertIn("cm.scrollIntoView(cm.getCursor(),80)", src)
 
-    def test_stuck_ime_flag_cannot_freeze_source_typing(self):
+    def test_ime_composition_tracking_has_a_dropped_compositionend_failsafe(self):
         src = APP.read_text(encoding="utf-8")
-        # A dropped compositionend must not leave vimImeComposing set forever
-        # (which makes INSERT ignore every key and Escape do nothing).
-        self.assertIn("function forceEndVimComposition(cm,opts={}){", src)
-        self.assertIn("const vimCompositionWatchdog=new WeakMap();", src)
-        self.assertIn("input.addEventListener('compositionupdate',()=>bumpVimCompositionWatchdog(cm));", src)
-        self.assertIn("input.addEventListener('blur',()=>{setTimeout(()=>forceEndVimComposition(cm),0)});", src)
-        # A real non-composing keydown clears a stale flag and is not swallowed.
-        self.assertIn("if(vimImeComposing.has(cm))forceEndVimComposition(cm,{stale:true});", src)
-        self.assertIn("vimImeEndedAt.set(cm,opts.stale?0:performance.now());", src)
-        # Hiding the Source pane mid-conversion also clears the flag.
-        self.assertIn("if(next!=='source')setTimeout(()=>forceEndVimComposition(editor),0);", src)
+        # Chromium drops compositionend on blur / pane hide; a watchdog and a
+        # blur handler clear the flag so autosave/marking never freeze.
+        self.assertIn("function forceEndImeComposition(cm){", src)
+        self.assertIn("const imeCompositionWatchdog=new WeakMap();", src)
+        self.assertIn("input.addEventListener('compositionupdate',()=>bumpImeWatchdog(cm));", src)
+        self.assertIn("input.addEventListener('blur',()=>{setTimeout(()=>forceEndImeComposition(cm),0)});", src)
+        self.assertIn("if(next!=='source')setTimeout(()=>forceEndImeComposition(editor),0);", src)
 
     def test_local_mode_uses_an_implicit_offline_workspace(self):
         src = APP.read_text(encoding="utf-8")
