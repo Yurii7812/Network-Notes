@@ -32,6 +32,32 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("Japanese IME", text)
         self.assertIn("Unsynchronized Local edits", text)
 
+    def test_operation_status_is_visible_and_accessible(self):
+        """Save/errors must not disappear into the intentionally compact header."""
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn('id="status" role="status" aria-live="polite"', src)
+        self.assertIn("#headerRight #status.visible", src)
+        self.assertNotIn("#headerRight #status{display:none}", src)
+        self.assertIn("kind==='error'?6000:2200", src)
+
+    def test_save_errors_use_the_persistent_error_status(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn("status('保存エラー: '+(e?.message||''),{kind:'error'})", src)
+
+    def test_ctrl_e_opens_source_in_insert_mode(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn("next==='source'?{enterInsert:true,...opts}:opts", src)
+        self.assertIn("if(enterInsert){", src)
+        self.assertIn("vimInputMode='insert';vimPendingCommand=''", src)
+        self.assertNotIn("toggleViewMode({forceNormal:true})", src)
+
+    def test_insert_tab_link_navigation_keeps_cursor_visible(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn("if(vimAllLinks(cm).length){", src)
+        self.assertIn("vimJumpLink(cm,e.shiftKey?-1:1)", src)
+        self.assertIn("cm.scrollIntoView(cm.getCursor()", src)
+        self.assertIn("vimScrollRaf=requestAnimationFrame(ensure)", src)
+
 
 if __name__ == "__main__":
     unittest.main()
