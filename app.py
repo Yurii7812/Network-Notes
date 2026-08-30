@@ -3223,16 +3223,20 @@ def sync_edges() -> None:
 
 
 def inferred_created_iso(name: str) -> str:
+    # Every stamped ``created`` value uses ISO 8601 with the environment's UTC
+    # offset so notes share one representation. A time recovered from a
+    # 14-digit filename stem or the file mtime is wall time in the current
+    # environment, so ``astimezone()`` attaches that offset.
     stem = Path(name).stem.split("__", 1)[-1]
     if re.fullmatch(r"\d{14}", stem):
         try:
-            return datetime.strptime(stem, "%Y%m%d%H%M%S").strftime("%Y-%m-%d %H:%M:%S")
+            return datetime.strptime(stem, "%Y%m%d%H%M%S").astimezone().isoformat(timespec="seconds")
         except ValueError:
             pass
     try:
-        return datetime.fromtimestamp((VAULT / name).stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.fromtimestamp((VAULT / name).stat().st_mtime).astimezone().isoformat(timespec="seconds")
     except OSError:
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return local_now_iso()
 
 
 CREATOR_METADATA_RE = re.compile(r"^\s*creator::\s*(.*?)\s*$", re.IGNORECASE)
@@ -3370,10 +3374,49 @@ def ensure_created_frontmatter_all_notes() -> None:
             write_file(name, updated)
 
 
+_LEGACY_CREATED_LINE_RE = re.compile(
+    r"^(\s*created\s*:\s*)[\"']?(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})[\"']?\s*$",
+    re.IGNORECASE,
+)
+
+
+def migrate_created_frontmatter_to_iso_offset() -> None:
+    """One-time: rewrite offset-less ``created`` values (``YYYY-MM-DD HH:MM:SS``)
+    to ISO 8601 with the current environment UTC offset so every note shares one
+    representation. Only past instants are touched. Remove this migration once it
+    has run on every deployment."""
+    ensure_vault()
+    now = datetime.now().astimezone()
+    for name in all_md_files():
+        try:
+            content = read_file(name)
+        except OSError:
+            continue
+        frontmatter, body = split_yaml_frontmatter(content)
+        if not frontmatter:
+            continue
+        lines = frontmatter.splitlines()
+        changed = False
+        for i in range(1, len(lines) - 1):
+            m = _LEGACY_CREATED_LINE_RE.match(lines[i])
+            if not m:
+                continue
+            try:
+                dt = datetime.fromisoformat(f"{m.group(2)}T{m.group(3)}").astimezone()
+            except ValueError:
+                continue
+            if dt > now:
+                continue
+            lines[i] = f"created: {dt.isoformat(timespec='seconds')}"
+            changed = True
+        if changed:
+            write_file(name, "\n".join(lines).rstrip() + "\n\n" + body.lstrip("\n"))
+
+
 def new_note_markdown(filename: str, title: str) -> str:
     created = local_now_iso()
     creator = inferred_creator_username(filename)
-    return f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\n---\n\n# {title}\n"
+    return f"---\ncreator::{creator}\ncreated: {created}\n---\n\n# {title}\n"
 
 
 def new_timestamp_filename() -> str:
@@ -7040,6 +7083,7 @@ def main():
     migrate_existing_child_side_v41()
     repair_index_titles()
     ensure_created_frontmatter_all_notes()
+    migrate_created_frontmatter_to_iso_offset()  # one-time; remove after it has run everywhere
     ensure_creator_metadata_all_notes()
     migrate_relation_vocabulary_v70()
     migrate_relation_vocabulary_v72()
