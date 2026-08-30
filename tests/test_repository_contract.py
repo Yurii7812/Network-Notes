@@ -127,6 +127,14 @@ class RepositoryContractTests(unittest.TestCase):
         # A non-zero margin scrolls early and keeps following past a reversal.
         self.assertIn("cursorScrollMargin:0,", src)
         self.assertNotIn("cursorScrollMargin:72", src)
+        # .CodeMirror-scroll vertical padding must NOT be overridden: its 50px
+        # padding-bottom is balanced against a -50px margin-bottom so
+        # getScrollInfo().clientHeight equals the visible height. A padding-bottom
+        # override inflates it, hiding the caret below the fold when scrolling
+        # down. Breathing room lives on .CodeMirror-lines instead.
+        self.assertNotIn(".CodeMirror-scroll{padding:28px 42px 100px}", src)
+        self.assertIn("#sourceWrap .CodeMirror-scroll{padding-left:42px;padding-right:42px}", src)
+        self.assertIn("#sourceWrap .CodeMirror-lines{max-width:900px;margin:0 auto;padding:24px 0 48px}", src)
         # None of the vim helpers force an extra scrollIntoView after setCursor.
         self.assertNotIn("cm.scrollIntoView(cm.getCursor(),80)", src)
         self.assertNotIn("editor.scrollIntoView(editor.getCursor(),80)", src)
