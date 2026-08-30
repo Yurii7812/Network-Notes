@@ -1785,7 +1785,12 @@ function handleVimKey(cm,e,viewName){
       setVimInputMode('normal',cm);
       return;
     }
-    if(e.key==='Tab'&&tableCellMove(cm,e.shiftKey?-1:1)){e.preventDefault();e.stopPropagation();return}
+    if(e.key==='Tab'){
+      if(tableCellMove(cm,e.shiftKey?-1:1)){e.preventDefault();e.stopPropagation();return}
+      // In INSERT, Tab follows the same link-to-link navigation as NORMAL.
+      // Leave ordinary Tab behavior intact when the document has no links.
+      if(vimAllLinks(cm).length){e.preventDefault();e.stopPropagation();vimJumpLink(cm,e.shiftKey?-1:1);return}
+    }
     return;
   }
   // NORMAL mode is available even on somebody else's read-only note.
