@@ -49,6 +49,15 @@ class RepositoryContractTests(unittest.TestCase):
         src = APP.read_text(encoding="utf-8")
         self.assertIn("status('保存エラー: '+(e?.message||''),{kind:'error'})", src)
 
+    def test_mobile_note_list_can_be_opened_and_closes_after_selection(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn('id="mobileNodesBtn" class="mobileOnly" type="button" aria-controls="sidebar" aria-expanded="false"', src)
+        self.assertIn("@media(max-width:700px){#mobileNodesBtn{display:inline-flex}body.mobileSidebarOpen #sidebar{display:block!important}", src)
+        self.assertIn("$('mobileNodesBtn').onclick=()=>setMobileSidebar(!document.body.classList.contains('mobileSidebarOpen'))", src)
+        self.assertIn("$('mobileOverlay').onclick=()=>setMobileSidebar(false)", src)
+        self.assertIn("await refreshFiles();setMobileSidebar(false);queueTopicWidgets()", src)
+        self.assertNotIn("$('mobileNodesBtn').onclick=()=>{}", src)
+
     def test_ctrl_e_opens_source_in_insert_mode(self):
         src = APP.read_text(encoding="utf-8")
         self.assertIn("next==='source'?{enterInsert:true,...opts}:opts", src)
