@@ -104,9 +104,11 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("if(key==='Tab'){vimPendingCommand='';vimJumpLink", src)
         self.assertNotIn("In INSERT, Tab follows", src)
         self.assertIn("if(e.key==='Tab'&&tableCellMove", src)
-        self.assertIn("cm.scrollTo(null,target)", src)
-        self.assertIn("ensure();\n  // Collapsed link marks", src)
-        self.assertIn("vimScrollRaf=requestAnimationFrame(ensure)", src)
+        # Cursor-follow scrolling is a single frame / single decision now; the
+        # old three-pass rAF loop caused visible viewport jitter.
+        self.assertIn("cm.scrollIntoView(cur,80);", src)
+        self.assertNotIn("vimScrollRaf=requestAnimationFrame(ensure)", src)
+        self.assertNotIn("Recalculate on two frames", src)
 
     def test_stuck_ime_flag_cannot_freeze_source_typing(self):
         src = APP.read_text(encoding="utf-8")

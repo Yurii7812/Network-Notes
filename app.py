@@ -714,28 +714,23 @@ function refreshVimNormalLinks(){
 let vimScrollRaf=0;
 function vimEnsureCursorVisible(cm,center=false){
   if(vimScrollRaf)cancelAnimationFrame(vimScrollRaf);
-  // Use CodeMirror's scroll API rather than mutating its DOM scroller. Direct
-  // DOM scrolling can be overwritten by CodeMirror's cached scroll position,
-  // which made distant Tab link jumps appear not to move the viewport.
-  const ensure=()=>{
+  // One scroll decision, one frame. The old version re-ran three times across
+  // two frames; collapsed link marks and line wrapping recompute between
+  // frames, so each pass picked a different target and the viewport visibly
+  // jittered. Let CodeMirror's own scrollIntoView keep the caret in view
+  // (it no-ops when the caret is already visible, so no half-scrolls).
+  vimScrollRaf=requestAnimationFrame(()=>{
     vimScrollRaf=0;
     try{
-      const cur=cm.getCursor(),info=cm.getScrollInfo(),c=cm.charCoords(cur,'local');
-      const topSafe=58,bottomSafe=72;
-      let target=null;
-      if(center)target=Math.max(0,(c.top+c.bottom-info.clientHeight)/2);
-      else if(c.top<info.top+topSafe)target=Math.max(0,c.top-topSafe);
-      else if(c.bottom>info.top+info.clientHeight-bottomSafe)target=Math.max(0,c.bottom-info.clientHeight+bottomSafe);
-      if(target===null||Math.abs(target-info.top)<2)return;
-      cm.scrollTo(null,target);
+      const cur=cm.getCursor();
+      if(center){
+        const info=cm.getScrollInfo(),c=cm.charCoords(cur,'local');
+        const target=Math.max(0,(c.top+c.bottom-info.clientHeight)/2);
+        if(Math.abs(target-info.top)>8)cm.scrollTo(null,target);
+      }else{
+        cm.scrollIntoView(cur,80);
+      }
     }catch(_){}
-  };
-  ensure();
-  // Collapsed link marks and wrapped lines can settle after the cursor moves.
-  // Recalculate on two frames so the final rendered caret remains centered.
-  vimScrollRaf=requestAnimationFrame(()=>{
-    ensure();
-    vimScrollRaf=requestAnimationFrame(ensure);
   });
 }
 function vimMove(cm,command){cm.execCommand(command);vimEnsureCursorVisible(cm)}
