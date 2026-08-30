@@ -6,6 +6,9 @@ import importlib.util
 import io
 import shutil
 import tempfile
+import os
+import time
+from datetime import datetime
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app.py"
@@ -146,6 +149,85 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("LOCAL_MODE = bool(args.local or LOCAL_PACKAGE_MARKER.is_file())", src)
         self.assertIn("function isGuest(){return !runtimeLocalMode&&!profile?.id}", src)
         self.assertNotIn("if(profile?.local_mode)showAuth(e.message)", src)
+
+    def test_timezone_aware_markdown_and_browser_display_contract(self):
+        src = APP.read_text(encoding="utf-8")
+        self.assertIn('datetime.now().astimezone().isoformat(timespec="seconds")', src)
+        self.assertIn("function formatLocalDateTime(value)", src)
+        self.assertIn("new Intl.DateTimeFormat(undefined", src)
+        self.assertIn("formatLocalDateTime(p.created_at)", src)
+        self.assertNotIn("Asia/Tokyo", src)
+        self.assertNotIn("+09:00", src)
+
+    def test_data_directory_remains_outside_repository(self):
+        self.test_app_uses_sibling_data_directory()
+        self.test_data_is_gitignored()
+
+
+class MarkdownTimezoneTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        app_dir = Path(cls.tmp.name) / "app"
+        app_dir.mkdir()
+        shutil.copy2(APP, app_dir / "app.py")
+        spec = importlib.util.spec_from_file_location("networknotes_timezone_test", app_dir / "app.py")
+        cls.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.module)
+        cls.module.ensure_vault()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def setUp(self):
+        self.old_tz = os.environ.get("TZ")
+
+    def tearDown(self):
+        if self.old_tz is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = self.old_tz
+        if hasattr(time, "tzset"):
+            time.tzset()
+
+    def set_timezone(self, value):
+        os.environ["TZ"] = value
+        if hasattr(time, "tzset"):
+            time.tzset()
+
+    def test_new_yaml_timestamps_include_environment_offset(self):
+        self.set_timezone("EST5EDT,M3.2.0,M11.1.0")
+        text = self.module.new_note_markdown("alice__20260830120000.md", "Offset")
+        created = self.module.yaml_created_value(text)
+        self.assertRegex(created, r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")
+        self.assertEqual(datetime.fromisoformat(created).utcoffset(), datetime.now().astimezone().utcoffset())
+        self.assertNotRegex(text, r"(?im)^\s*updated\s*:")
+
+    def test_created_is_preserved_and_updated_is_not_written(self):
+        name = "alice__20260830120001.md"
+        original_created = "2026-08-31T02:22:53+09:00"
+        content = f"---\ncreator::alice\ncreated: {original_created}\nupdated: 2026-08-31T02:30:00+09:00\n---\n\n# Note\n"
+        self.set_timezone("EST5EDT,M3.2.0,M11.1.0")
+        self.module.write_file(name, content)
+        saved = self.module.read_file(name)
+        self.assertEqual(self.module.yaml_created_value(saved), original_created)
+        self.assertNotRegex(saved, r"(?im)^\s*updated\s*:")
+
+    def test_different_offsets_compare_by_absolute_instant(self):
+        earlier = "2026-08-31T02:22:53+09:00"
+        later = "2026-08-30T14:30:00-04:00"
+        same_as_earlier = "2026-08-30T17:22:53+00:00"
+        self.assertLess(self.module.datetime_sort_key(earlier), self.module.datetime_sort_key(later))
+        self.assertEqual(self.module.datetime_sort_key(earlier), self.module.datetime_sort_key(same_as_earlier))
+
+    def test_legacy_datetime_remains_readable_and_unchanged(self):
+        legacy = "2026-08-30 17:22:53"
+        content = f"---\ncreated: {legacy}\n---\n\n# Legacy\n"
+        self.assertEqual(self.module.yaml_created_value(content), legacy)
+        self.assertIsNone(self.module.parse_note_datetime(legacy).tzinfo)
+        normalized = self.module.ensure_created_frontmatter("legacy.md", content)
+        self.assertIn(f"created: {legacy}", normalized)
 
 
 

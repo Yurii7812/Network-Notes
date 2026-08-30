@@ -22,7 +22,7 @@ import urllib.request
 import urllib.error
 import webbrowser
 import zipfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -1000,6 +1000,19 @@ function splitYamlFrontmatter(text){
   }
   return{frontmatter:'',body:normalized};
 }
+function formatLocalDateTime(value){
+  if(value===null||value===undefined||value==='')return'';
+  let d;
+  if(typeof value==='number')d=new Date(value*1000);
+  else{
+    let raw=String(value).trim();
+    // SQLite CURRENT_TIMESTAMP is UTC despite having no suffix.
+    if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw))raw=raw.replace(' ','T')+'Z';
+    d=new Date(raw);
+  }
+  if(Number.isNaN(d.getTime()))return String(value);
+  return new Intl.DateTimeFormat(undefined,{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d);
+}
 function creatorMetadataLine(text){
   const body=splitYamlFrontmatter(text).body;
   const lines=String(body||'').replace(/\r\n/g,'\n').split('\n');
@@ -1565,14 +1578,14 @@ function renderFiles(){
       const row=document.createElement('div');row.className='fileSelectRow';
       const cb=document.createElement('input');cb.type='checkbox';cb.className='fileSelectCheck';cb.disabled=!!f.is_index;cb.checked=selectedNodeFiles.has(f.name);cb.setAttribute('aria-label',f.title+' を選択');
       cb.onchange=()=>{if(cb.checked)selectedNodeFiles.add(f.name);else selectedNodeFiles.delete(f.name);updateNodeDeleteButton()};
-      const b=document.createElement('button');b.className='file'+(f.name===current?' active':'');b.textContent=f.title;b.title=f.name+(f.time_label?' · '+f.time_label:'');
+      const b=document.createElement('button');b.className='file'+(f.name===current?' active':'');b.textContent=f.title;b.title=f.name+(f.time?' · '+formatLocalDateTime(f.time):'');
       b.onclick=()=>{if(f.is_index){openFile(f.name);return}cb.checked=!cb.checked;cb.onchange()};
       row.appendChild(cb);row.appendChild(b);$('files').appendChild(row);
     }else{
       const b=document.createElement('button');
       b.className='file'+(f.name===current?' active':'');
       b.textContent=f.title;
-      b.title=f.name+(f.time_label?' · '+f.time_label:'');
+      b.title=f.name+(f.time?' · '+formatLocalDateTime(f.time):'');
       b.onclick=()=>openFile(f.name);
       $('files').appendChild(b);
     }
@@ -2134,7 +2147,7 @@ async function showSocial(view){
   else if(view==='admin')await renderAdminPage();
 }
 function socialAuthorHtml(u){return '<button type="button" class="feedAuthor profileLink" data-profile-user="'+Number(u.id||0)+'">'+avatarHtml(u)+'<span class="feedAuthorText"><span class="feedAuthorName">'+escapeHtml(u.display_name||u.username||'')+'</span><span class="feedAuthorHandle">@'+escapeHtml(u.username||'')+'</span></span></button>'}
-function feedCardHtml(p){return '<article class="feedCard" data-post="'+escapeHtml(p.file)+'">'+socialAuthorHtml(p.author)+'<div class="feedTitle" data-open-post="'+escapeHtml(p.file)+'">'+escapeHtml(p.title)+'</div>'+(p.image_url?'<img class="inlineImage" src="'+escapeHtml(p.image_url)+'" alt="">':'')+(p.excerpt?'<div class="feedExcerpt">'+escapeHtml(p.excerpt)+'</div>':'')+'<div class="feedActions"><button type="button" data-like-post="'+escapeHtml(p.file)+'">'+(p.liked?'♥':'♡')+' '+p.like_count+'</button><span class="feedTime">'+escapeHtml((p.created_at||'').replace('T',' '))+' ・ 接続 '+Number(p.node_count||0)+'</span></div></article>'}
+function feedCardHtml(p){return '<article class="feedCard" data-post="'+escapeHtml(p.file)+'">'+socialAuthorHtml(p.author)+'<div class="feedTitle" data-open-post="'+escapeHtml(p.file)+'">'+escapeHtml(p.title)+'</div>'+(p.image_url?'<img class="inlineImage" src="'+escapeHtml(p.image_url)+'" alt="">':'')+(p.excerpt?'<div class="feedExcerpt">'+escapeHtml(p.excerpt)+'</div>':'')+'<div class="feedActions"><button type="button" data-like-post="'+escapeHtml(p.file)+'">'+(p.liked?'♥':'♡')+' '+p.like_count+'</button><span class="feedTime">'+escapeHtml(formatLocalDateTime(p.created_at))+' ・ 接続 '+Number(p.node_count||0)+'</span></div></article>'}
 function bindProfileLinks(root){root.querySelectorAll('[data-profile-user]').forEach(el=>el.onclick=e=>{e.stopPropagation();renderProfile(Number(el.dataset.profileUser)).catch(err=>status(err.message))})}
 async function toggleLike(file,button=null){
   if(!requireAuth('いいねするにはログインまたは新規登録してください',()=>toggleLike(file,button)))return;
@@ -2211,7 +2224,7 @@ async function runSearch(){
   const input=$('globalSearchInput'),box=$('searchResults');if(!input||!box)return;const q=input.value.trim();box.innerHTML='<div class="searchEmpty">検索中...</div>';
   const d=await api('/api/search?limit=150&q='+encodeURIComponent(q));const context=$('searchContext');if(context)context.textContent=(d.context_label||'')+' · '+d.count+'件';
   if(!d.results.length){box.innerHTML='<div class="searchEmpty">一致するノートがありません</div>';return}
-  box.innerHTML=d.results.map(x=>'<article class="searchResult" data-search-file="'+escapeHtml(x.file)+'"><div class="searchResultHead">'+avatarHtml(x.author,'small')+'<span class="searchResultTitle">'+highlightSearchText(x.title,x.match_terms)+'</span><button type="button" class="searchResultAuthor profileLink" data-profile-user="'+Number(x.author?.id||0)+'">@'+escapeHtml(x.author?.username||'')+'</button></div><div class="searchResultSnippet">'+highlightSearchText(x.snippet||'',x.match_terms)+'</div><div class="searchResultMeta">'+escapeHtml(x.created_at||'')+(x.communities?.length?' · '+x.communities.map(c=>escapeHtml(c.name)).join(', '):'')+'</div></article>').join('');
+  box.innerHTML=d.results.map(x=>'<article class="searchResult" data-search-file="'+escapeHtml(x.file)+'"><div class="searchResultHead">'+avatarHtml(x.author,'small')+'<span class="searchResultTitle">'+highlightSearchText(x.title,x.match_terms)+'</span><button type="button" class="searchResultAuthor profileLink" data-profile-user="'+Number(x.author?.id||0)+'">@'+escapeHtml(x.author?.username||'')+'</button></div><div class="searchResultSnippet">'+highlightSearchText(x.snippet||'',x.match_terms)+'</div><div class="searchResultMeta">'+escapeHtml(formatLocalDateTime(x.created_at))+(x.communities?.length?' · '+x.communities.map(c=>escapeHtml(c.name)).join(', '):'')+'</div></article>').join('');
   box.querySelectorAll('[data-search-file]').forEach(el=>el.onclick=async e=>{if(e.target.closest('[data-profile-user]'))return;showNetwork();await openFile(el.dataset.searchFile)});bindProfileLinks(box);
 }
 async function openSearch(scope='auto',communityId=0,userId=0,q=''){
@@ -2271,13 +2284,13 @@ async function renderCommunity(cid,tab='overview'){
   if(tab==='overview'||tab==='latest'||tab==='popular')bindFeedActions(root);
   if(tab==='dm'&&c.joined){const load=()=>loadCommunityChat(cid).catch(()=>{});await load();socialPollTimer=setInterval(load,4000);$('communityChatForm').onsubmit=async e=>{e.preventDefault();const input=$('communityChatInput'),body=input.value.trim();if(!body)return;await api('/api/community-message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({community_id:cid,body})});input.value='';await load()}}
 }
-async function loadCommunityChat(cid){const box=$('communityChat');if(!box)return;const d=await api('/api/community-messages?id='+cid);box.innerHTML=d.messages.map(m=>'<div class="chatMsg">'+avatarHtml(m.author,'small')+'<div class="chatBubble"><div class="chatName">'+escapeHtml(m.author.display_name||m.author.username)+'</div><div>'+escapeHtml(m.body)+'</div><div class="chatTime">'+escapeHtml(m.created_at)+'</div></div></div>').join('')||'<div class="emptyState">まだメッセージがありません</div>';box.scrollTop=box.scrollHeight}
+async function loadCommunityChat(cid){const box=$('communityChat');if(!box)return;const d=await api('/api/community-messages?id='+cid);box.innerHTML=d.messages.map(m=>'<div class="chatMsg">'+avatarHtml(m.author,'small')+'<div class="chatBubble"><div class="chatName">'+escapeHtml(m.author.display_name||m.author.username)+'</div><div>'+escapeHtml(m.body)+'</div><div class="chatTime">'+escapeHtml(formatLocalDateTime(m.created_at))+'</div></div></div>').join('')||'<div class="emptyState">まだメッセージがありません</div>';box.scrollTop=box.scrollHeight}
 
 function dmContactHtml(u,activeId=0){return '<button class="listItem dmContact '+(Number(u.id)===Number(activeId)?'active':'')+'" type="button" data-dm-user="'+u.id+'">'+avatarHtml(u,'small')+'<span class="dmContactText"><span class="dmContactName">'+escapeHtml(u.display_name||u.username)+'</span><span class="dmContactMeta">@'+escapeHtml(u.username)+(u.following?' · フォロー中':'')+(u.chatted?' · 会話あり':'')+'</span></span></button>'}
 async function dmContacts(){return (await api('/api/dm-contacts')).users||[]}
 async function renderDmHome(){stopSocialPoll();const root=$('socialContent');const users=await dmContacts();root.innerHTML=headerWithExpand('DM')+'<div class="socialGrid"><div class="panel"><div class="panelHead">フォロー中・会話した人</div><div class="panelBody" id="dmUsers">'+(users.length?users.map(u=>dmContactHtml(u)).join(''):'<div class="emptyState">フォローした人、またはDMした人がここに表示されます</div>')+'</div></div><div class="panel"><div class="panelHead">メッセージ</div><div class="panelBody"><div class="emptyState">相手を選択してください</div></div></div></div>';bindExpand();root.querySelectorAll('[data-dm-user]').forEach(b=>b.onclick=()=>openDm(Number(b.dataset.dmUser),users))}
 async function openDm(otherId,users=null){stopSocialPoll();const root=$('socialContent');if(!users)users=await dmContacts();const d=await api('/api/dm?user_id='+otherId),other=d.other;if(!users.some(u=>Number(u.id)===Number(otherId)))users=[other,...users];root.innerHTML='<div class="socialHeader"><h2>DM</h2><button id="dmClearBtn" type="button">チャットを消す</button><button id="socialExpandBtn" class="expandBtn" type="button">拡大</button></div><div class="socialGrid"><div class="panel"><div class="panelHead">フォロー中・会話した人</div><div class="panelBody">'+users.map(u=>dmContactHtml(u,otherId)).join('')+'</div></div><div class="panel"><div class="panelHead"><button class="profileLink" data-profile-user="'+other.id+'">'+escapeHtml(other.display_name||other.username)+' <span class="feedAuthorHandle">@'+escapeHtml(other.username)+'</span></button></div><div class="panelBody"><div id="dmChat" class="chatBox"></div><form id="dmForm" class="chatComposer"><input id="dmInput" maxlength="4000" placeholder="メッセージ"><button>送信</button></form></div></div></div>';bindExpand();bindProfileLinks(root);root.querySelectorAll('[data-dm-user]').forEach(b=>b.onclick=()=>openDm(Number(b.dataset.dmUser),users));$('dmClearBtn').onclick=async()=>{if(!confirm('このDM履歴を自分の画面から削除しますか？相手側の履歴は消えません。'))return;await api('/api/dm-clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:otherId})});await renderDmHome()};const load=()=>loadDm(otherId).catch(()=>{});await load();socialPollTimer=setInterval(load,4000);$('dmForm').onsubmit=async e=>{e.preventDefault();const input=$('dmInput'),body=input.value.trim();if(!body)return;await api('/api/dm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:otherId,body})});input.value='';await load()}}
-async function loadDm(otherId){const box=$('dmChat');if(!box)return;const d=await api('/api/dm?user_id='+otherId);box.innerHTML=d.messages.map(m=>'<div class="chatMsg">'+avatarHtml(m.author,'small')+'<div class="chatBubble"><div class="chatName">'+escapeHtml(m.author.display_name||m.author.username)+'</div><div>'+escapeHtml(m.body)+'</div><div class="chatTime">'+escapeHtml(m.created_at)+'</div></div></div>').join('')||'<div class="emptyState">メッセージはありません</div>';box.scrollTop=box.scrollHeight}
+async function loadDm(otherId){const box=$('dmChat');if(!box)return;const d=await api('/api/dm?user_id='+otherId);box.innerHTML=d.messages.map(m=>'<div class="chatMsg">'+avatarHtml(m.author,'small')+'<div class="chatBubble"><div class="chatName">'+escapeHtml(m.author.display_name||m.author.username)+'</div><div>'+escapeHtml(m.body)+'</div><div class="chatTime">'+escapeHtml(formatLocalDateTime(m.created_at))+'</div></div></div>').join('')||'<div class="emptyState">メッセージはありません</div>';box.scrollTop=box.scrollHeight}
 function fmtBytes(n){n=Number(n||0);if(n<1024)return n+' B';if(n<1024*1024)return (n/1024).toFixed(1)+' KB';return (n/1024/1024).toFixed(1)+' MB'}
 function quotaRow(label,value,limit,display){const pct=limit?Math.min(100,Math.round(value/limit*100)):0;return '<div class="quotaRow"><span>'+escapeHtml(label)+'</span><span class="quotaBar"><i style="width:'+pct+'%"></i></span><span>'+escapeHtml(display||String(value)+' / '+String(limit))+'</span></div>'}
 async function importBackupFile(file){
@@ -2342,7 +2355,7 @@ async function renderAdminPage(){
   const d=await api('/api/moderation');
   const rows=(d.users||[]).map(u=>{const q=u.quota||{},owner=u.role==='owner',self=Number(u.id)===Number(profile.id);let acts='<button data-quota-save="'+u.id+'" type="button">個別上限を保存</button>';if(!owner&&!self){if(profile.role==='owner')acts+='<button data-role-user="'+u.id+'" data-role-next="'+(u.role==='moderator'?'user':'moderator')+'">'+(u.role==='moderator'?'Moderator解除':'Moderatorにする')+'</button>';acts+='<button data-status-user="'+u.id+'" data-status-next="'+(u.status==='suspended'?'active':'suspended')+'">'+(u.status==='suspended'?'停止解除':'一時停止')+'</button><button data-delete-user="'+u.id+'" data-delete-name="'+escapeHtml(u.username)+'">削除</button>'}return '<tr><td>@'+escapeHtml(u.username)+'<br><span class="roleBadge">'+escapeHtml(u.role)+'</span></td><td class="'+(u.status==='suspended'?'statusSuspended':'')+'">'+escapeHtml(u.status)+(u.suspended_reason?'<br>'+escapeHtml(u.suspended_reason):'')+'</td><td>通報 '+Number(u.report_count||0)+'</td><td><div>'+Number(q.notes||0)+' notes · '+fmtBytes(q.note_bytes||0)+' MD · '+fmtBytes(q.media_bytes||0)+' 添付 · '+Number(q.relations||0)+' 関係</div><div class="communityMeta">'+(u.quota_override?'個別上限':'全体デフォルト')+'</div><div class="quotaInputs"><label>ノート数<input data-quota-field="notes_limit" data-quota-user="'+u.id+'" type="number" min="1" value="'+Number(q.notes_limit||1000)+'"></label><label>Markdown MB<input data-quota-field="note_mb" data-quota-user="'+u.id+'" type="number" min="1" step="1" value="'+Math.round(Number(q.note_bytes_limit||0)/1048576)+'"></label><label>添付 MB<input data-quota-field="media_mb" data-quota-user="'+u.id+'" type="number" min="1" step="1" value="'+Math.round(Number(q.media_bytes_limit||0)/1048576)+'"></label><label>関係数<input data-quota-field="relations_limit" data-quota-user="'+u.id+'" type="number" min="1" value="'+Number(q.relations_limit||5000)+'"></label></div></td><td><div class="actions">'+acts+'</div></td></tr>'}).join('');
   const reports=(d.reports||[]).map(r=>'<div class="reportCard"><strong>'+escapeHtml(r.note_file?('ノート '+r.note_file):('@'+(r.target_username||'')))+'</strong> ・ 通報者 @'+escapeHtml(r.reporter_username||'')+'<div class="reportReason">'+escapeHtml(r.reason||'理由なし')+'</div><button data-resolve-report="'+r.id+'">確認済みにする</button></div>').join('')||'<div class="emptyState">未処理の通報はありません</div>';
-  const logs=(d.logs||[]).slice(0,50).map(x=>'<div class="communityMeta">'+escapeHtml(x.created_at||'')+' · @'+escapeHtml(x.actor_username||'')+' · '+escapeHtml(x.action||'')+' · '+escapeHtml(x.target_username||x.target_note||'')+'</div>').join('')||'<div class="emptyState">履歴はありません</div>';
+  const logs=(d.logs||[]).slice(0,50).map(x=>'<div class="communityMeta">'+escapeHtml(formatLocalDateTime(x.created_at))+' · @'+escapeHtml(x.actor_username||'')+' · '+escapeHtml(x.action||'')+' · '+escapeHtml(x.target_username||x.target_note||'')+'</div>').join('')||'<div class="emptyState">履歴はありません</div>';
   const g=d.global_quota||{};const globalBox=profile.role==='owner'?('<section class="globalQuotaBox"><h3>全体のデフォルト使用可能量</h3><div class="globalQuotaActions"><label>ノート数<input id="globalQuotaNotes" type="number" min="1" value="'+Number(g.notes_limit||1000)+'"></label><label>Markdown MB<input id="globalQuotaNoteMb" type="number" min="1" value="'+Math.round(Number(g.note_bytes_limit||0)/1048576)+'"></label><label>添付 MB<input id="globalQuotaMediaMb" type="number" min="1" value="'+Math.round(Number(g.media_bytes_limit||0)/1048576)+'"></label><label>関係数<input id="globalQuotaRelations" type="number" min="1" value="'+Number(g.relations_limit||5000)+'"></label><button id="globalQuotaSave" type="button">全体を保存</button></div><div class="profileHint">個別上限が設定されていないユーザー全員に適用されます。個別上限は維持されます。</div></section>'):' ';root.innerHTML=headerWithExpand('管理')+globalBox+'<section class="dataCard"><h3>ユーザー</h3><div style="overflow:auto"><table class="adminTable"><thead><tr><th>ユーザー</th><th>状態</th><th>通報</th><th>使用量</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table></div></section><section class="dataCard" style="margin-top:12px"><h3>未処理の通報</h3>'+reports+'</section><section class="dataCard" style="margin-top:12px"><h3>管理履歴</h3>'+logs+'</section>';bindExpand();
   if($('globalQuotaSave'))$('globalQuotaSave').onclick=async()=>{await api('/api/mod-global-quota',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({notes_limit:Number($('globalQuotaNotes').value||0),note_mb:Number($('globalQuotaNoteMb').value||0),media_mb:Number($('globalQuotaMediaMb').value||0),relations_limit:Number($('globalQuotaRelations').value||0)})});status('全体の使用可能量を更新しました');await renderAdminPage()};
   root.querySelectorAll('[data-role-user]').forEach(b=>b.onclick=async()=>{await api('/api/mod-role',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:Number(b.dataset.roleUser),role:b.dataset.roleNext})});await renderAdminPage()});
@@ -2549,10 +2562,11 @@ def write_file(name: str, content: str) -> None:
     # are read-modify-write across multiple notes; a concurrent draft save must
     # never be overwritten by one of those older snapshots.
     with _GRAPH_SYNC_LOCK:
-        # Every write keeps the metadata block stable: creator first, created second,
-        # space-formatted timestamp, then exactly one blank line before Markdown.
+        # Keep the creation instant verbatim. Offsets make transferred Markdown
+        # unambiguous without imposing the Web server's timezone on Local mode.
         normalized = ensure_created_frontmatter(safe, str(content or ""))
         normalized = ensure_creator_metadata(safe, normalized)
+        normalized = remove_updated_frontmatter(normalized)
         atomic_text_write(VAULT / safe, normalized)
 
 
@@ -2731,12 +2745,46 @@ def yaml_created_value(content: str) -> str:
     for line in frontmatter.splitlines()[1:-1]:
         m = re.match(r"^\s*created\s*:\s*(.*?)\s*$", line, re.IGNORECASE)
         if m:
-            value = m.group(1).strip().strip('"\'')
-            try:
-                return datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                return value
+            # Do not normalize an existing value.  In particular, its original
+            # offset documents the timezone in which the note was created.
+            return m.group(1).strip().strip('"\'')
     return ""
+
+
+def local_now_iso() -> str:
+    """Current wall time with the runtime environment's UTC offset."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def parse_note_datetime(value: str) -> datetime:
+    """Parse current ISO values and legacy space-separated, offset-less values.
+
+    Legacy Markdown values cannot be assigned a historical timezone safely, so
+    they retain their old meaning as local wall time.  Aware values are returned
+    as aware datetimes and can therefore be compared by absolute instant.
+    """
+    raw = str(value or "").strip().strip('"\'')
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    return datetime.fromisoformat(raw)
+
+
+def datetime_sort_key(value: str) -> float:
+    dt = parse_note_datetime(value)
+    if dt.tzinfo is None:
+        dt = dt.astimezone()
+    return dt.timestamp()
+
+
+def remove_updated_frontmatter(content: str) -> str:
+    """Remove the obsolete generated ``updated`` field without touching ``created``."""
+    frontmatter, body = split_yaml_frontmatter(content)
+    if not frontmatter:
+        return content
+    lines = frontmatter.splitlines()
+    lines = [line for i, line in enumerate(lines)
+             if i in {0, len(lines) - 1} or not re.match(r"^\s*updated\s*:\s*", line, re.IGNORECASE)]
+    return "\n".join(lines).rstrip() + "\n\n" + body.lstrip("\n")
 
 
 def split_direction_content(content: str) -> tuple[str, str]:
@@ -3138,9 +3186,8 @@ def ensure_creator_metadata_all_notes() -> None:
 def ensure_created_frontmatter(name: str, content: str) -> str:
     """Ensure each Markdown note has stable YAML ``created`` metadata.
 
-    The persisted display format is always ``YYYY-MM-DD HH:MM:SS``.
-    Existing ISO values containing ``T`` are normalized without changing
-    the actual timestamp.
+    Existing values are preserved verbatim because changing their offset (or
+    guessing one for legacy values) would discard information.
     """
     created = yaml_created_value(content)
     frontmatter, body = split_yaml_frontmatter(content)
@@ -3171,7 +3218,7 @@ def ensure_created_frontmatter_all_notes() -> None:
 
 
 def new_note_markdown(filename: str, title: str) -> str:
-    created = inferred_created_iso(filename)
+    created = local_now_iso()
     creator = inferred_creator_username(filename)
     return f"---\ncreator::{creator}\ncreated: {created}\n---\n\n# {title}\n"
 
@@ -3943,7 +3990,7 @@ def ensure_community_index(community_id: int) -> str:
     if not row: raise ValueError("コミュニティが見つかりません")
     name=community_index_filename(community_id); path=VAULT/name
     if not path.exists():
-        creator=username_for_user_id(int(row["owner_user_id"])); created=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        creator=username_for_user_id(int(row["owner_user_id"])); created=local_now_iso()
         legacy=str(row["index_markdown"] or "# Index\n").strip()
         if not re.search(r"(?m)^#\s+",legacy): legacy="# Index\n\n"+legacy
         atomic_text_write(path, f"---\ncreator::{creator}\ncreated: {created}\n---\n\n{legacy.rstrip()}\n\n---\n")
@@ -4011,7 +4058,7 @@ def ensure_user_index(user_id: int) -> str:
     name = index_filename(user_id)
     p = VAULT / name
     if not p.exists():
-        created = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        created = local_now_iso()
         creator = username_for_user_id(user_id)
         atomic_text_write(p, f"---\ncreator::{creator}\ncreated: {created}\n---\n\n# Index\n\n---\n")
     return name
@@ -5686,7 +5733,10 @@ def search_payload(viewer_user_id: int, query: str = "", scope: str = "auto", co
         if not query.strip(): score=0
         created=note_created_iso(f)
         results.append({"file":f,"title":titles[f],"author":owner,"snippet":_search_snippet(plain,positive_needles),"created_at":created,"communities":community_by_file.get(f,[]),"score":score,"match_terms":positive_needles[:12]})
-    results.sort(key=lambda x: (x["score"], x["created_at"], x["title"].casefold()), reverse=True)
+    def result_time(item):
+        try: return datetime_sort_key(item["created_at"])
+        except (ValueError, TypeError): return 0.0
+    results.sort(key=lambda x: (x["score"], result_time(x), x["title"].casefold()), reverse=True)
     lim=max(1,min(int(limit or 100),200));return {"count":len(results),"results":results[:lim],"scope":scope,"context_label":context_label or scope}
 
 
@@ -5745,7 +5795,10 @@ def feed_payload(viewer_user_id: int, mode: str = "latest", community_id: int | 
         created_at = note_created_iso(f)
         interactions = like_counts.get(f, 0) * 4 + int(m.get("node_count", 0)) + int(m.get("support_count", 0)) * 2
         try:
-            age_hours = max(0.0, (datetime.now() - datetime.fromisoformat(created_at)).total_seconds() / 3600.0)
+            created_dt = parse_note_datetime(created_at)
+            if created_dt.tzinfo is None:
+                created_dt = created_dt.astimezone()
+            age_hours = max(0.0, (datetime.now(timezone.utc) - created_dt.astimezone(timezone.utc)).total_seconds() / 3600.0)
         except (ValueError, TypeError):
             age_hours = 0.0
         # "Popular now": interaction strength with a gentle time decay.
@@ -5763,11 +5816,11 @@ def feed_payload(viewer_user_id: int, mode: str = "latest", community_id: int | 
             "score": round(score, 6),
         })
     if mode == "popular":
-        cards.sort(key=lambda x: (x["score"], x["created_at"]), reverse=True)
+        cards.sort(key=lambda x: (x["score"], datetime_sort_key(x["created_at"])), reverse=True)
     elif mode == "shared" and community_id is not None:
         cards.sort(key=lambda x: shared_at.get(x["file"], ""), reverse=True)
     else:
-        cards.sort(key=lambda x: x["created_at"], reverse=True)
+        cards.sort(key=lambda x: datetime_sort_key(x["created_at"]), reverse=True)
     return {"posts": cards[:100], "mode": mode}
 
 
