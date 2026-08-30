@@ -300,7 +300,7 @@ header{
 #bodyEditorWrap .CodeMirror{line-height:1.46}
 #bodyEditorWrap .CodeMirror pre.CodeMirror-line,#bodyEditorWrap .CodeMirror pre.CodeMirror-line-like{margin:0;padding-top:0;padding-bottom:0}
 .vimIndicator{padding:4px 7px!important;font-size:9.5px!important;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.03em;min-width:78px;text-align:center}
-.vimIndicator.normal{background:#111;color:#fff;border-color:#111}.vimIndicator.insert{background:#fff;color:#111}
+.vimIndicator.normal{background:#111;color:#fff;border-color:#111}.vimIndicator.insert{background:#fff;color:#111}.vimIndicator.visual{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
 .graphNode circle,.graphNode.support circle,.graphNode.oppose circle,.graphNode.question circle,.graphNode.answer circle,.graphNode.derive circle,.graphNode.related circle,.graphNode.topic circle,.graphNode.note circle,.graphNode.summary circle,.graphNode.other circle,.graphNode.current circle{fill:#000!important;stroke:#000!important}
 
 /* v63 Edit/Organize layout parity.
@@ -516,6 +516,8 @@ const voterId=(()=>{let v=localStorage.getItem('networkNotesVoterId');if(!v){v=(
 const sectionSort=new Map();
 const $=id=>document.getElementById(id);
 let vimInputMode='insert';
+let vimVisual=null;          // null | 'char' | 'line' (only meaningful while vimInputMode==='normal')
+let vimVisualAnchor=null;    // {line,ch} fixed end of the visual selection
 let vimPendingCommand='';
 let vimRegister='';
 let vimRegisterLinewise=false;
@@ -643,8 +645,10 @@ function updateVimUi(){
   const b=$('vimIndicator');if(!b)return;
   const available=!!currentData&&mode==='source';
   b.style.display=available?'inline-block':'none';
-  b.textContent='VIM '+(vimInputMode==='normal'?'NORMAL':'INSERT');
-  b.classList.toggle('normal',vimInputMode==='normal');
+  const label=vimInputMode!=='normal'?'INSERT':(vimVisual==='line'?'V-LINE':vimVisual==='char'?'VISUAL':'NORMAL');
+  b.textContent='VIM '+label;
+  b.classList.toggle('normal',vimInputMode==='normal'&&!vimVisual);
+  b.classList.toggle('visual',vimInputMode==='normal'&&!!vimVisual);
   b.classList.toggle('insert',vimInputMode!=='normal');
 }
 function bodyCursorMappedToSource(){
@@ -715,7 +719,7 @@ function setVimInputMode(next,cm=null){
     return;
   }
   const normalCaret=wantsNormal?collapseVimSelection(active,active?.getCursor?.('head')):null;
-  vimInputMode=wantsNormal?'normal':'insert';vimPendingCommand='';
+  vimInputMode=wantsNormal?'normal':'insert';vimVisual=null;vimVisualAnchor=null;vimPendingCommand='';
   if(previousVimInputMode==='insert'&&vimInputMode==='normal'&&mode==='source'&&relationSyncPending){
     flushAutosave(true).catch(console.error);
   }
@@ -723,7 +727,7 @@ function setVimInputMode(next,cm=null){
 
   if(vimInputMode==='normal'&&mode!=='source'){
     clearLiveLinkMarks();clearVimNormalLinkMarks();
-    switchMode('source');
+    switchMode('source',{enterInsert:false});
     return;
   }
 
@@ -1143,6 +1147,8 @@ function setEditorsFromRaw(content,{keepBody=false}={}){
   const raw=stripAuto(content);
   const projected=sourceProjectionWithBoxEdges(raw);
   relationSyncPending=false;
+  // A document swap invalidates any in-progress visual selection.
+  vimVisual=null;vimVisualAnchor=null;
   currentStructureSignature=structureSignatureFromText(raw);
   loadingDoc=true;clearLiveLinkMarks();editor.setValue(projected);refreshSourceFrontmatterStyle();refreshSourceAutoEdgeStyle();
   if(!keepBody)bodyEditor.setValue(bodyWithoutPureEdgeSections(raw));
@@ -1688,11 +1694,27 @@ function setModeVisibility(next){
   $('organizeWrap').style.display=next==='organize'?'block':'none';
   updateViewModeToggle();updateVimUi();
 }
+function applySourceInsertState(focus){
+  // Source is the writing surface: entering it must accept ordinary keyboard/
+  // IME input immediately. Runs synchronously so a slow or failed autosave can
+  // never strand the editor in NORMAL, where `beforeinput` blocks every key.
+  vimVisual=null;vimVisualAnchor=null;vimInputMode='insert';vimPendingCommand='';
+  clearVimNormalLinkMarks();applyEditorReadOnly();updateVimUi();
+  if(focus&&mode==='source'){try{editor.focus();vimEnsureCursorVisible(editor,true)}catch(_){}}
+}
 function switchMode(next,opts={}){
   next=next==='source'?'source':'organize';
   const forceNormal=!!opts.forceNormal;
-  const enterInsert=!!opts.enterInsert&&next==='source';
-  if(modeSwitchPromise)return modeSwitchPromise;
+  // Explicit transitions into Source default to INSERT. Only opts.enterInsert
+  // === false (Esc pressed from Organize) keeps NORMAL.
+  const enterInsert=next==='source'&&!forceNormal&&opts.enterInsert!==false;
+  if(enterInsert)applySourceInsertState(false);
+  if(modeSwitchPromise){
+    // A switch is already in flight. Do not drop a fresh explicit edit intent:
+    // re-assert INSERT and focus once the running transition settles.
+    if(enterInsert)modeSwitchPromise.then(()=>{if(mode==='source')applySourceInsertState(true)}).catch(()=>{});
+    return modeSwitchPromise;
+  }
   modeSwitchPromise=(async()=>{
     await waitForImeIdle();
     // Freeze Vim input before the asynchronous save. Otherwise a user can type
@@ -1701,25 +1723,28 @@ function switchMode(next,opts={}){
     if(forceNormal){
       const active=mode==='source'?editor:bodyEditor;
       const caret=mode==='source'?collapseVimSelection(editor,editor.getCursor('head')):null;
-      vimInputMode='normal';vimPendingCommand='';
+      vimVisual=null;vimVisualAnchor=null;vimInputMode='normal';vimPendingCommand='';
       clearLiveLinkMarks();clearVimNormalLinkMarks();applyEditorReadOnly();updateVimUi();
       if(mode==='source'&&caret){collapseVimSelection(editor,caret)}
     }
-    await flushAutosave(true);
-    // Source is the writing surface. Explicit edit transitions should accept
-    // ordinary keyboard/IME input immediately, without requiring a Vim `i`.
-    if(enterInsert){
-      vimInputMode='insert';vimPendingCommand='';
-      clearVimNormalLinkMarks();applyEditorReadOnly();updateVimUi();
+    // A failed autosave (offline / auth) must not abort the transition; the
+    // save retries on its own and the user still gets a usable editor.
+    try{await flushAutosave(true)}catch(_){}
+    if(enterInsert)applySourceInsertState(false);
+    if(next===mode){
+      setModeVisibility(next);
+      if(next==='source')setTimeout(()=>{editor.refresh();if(vimInputMode==='normal'&&!vimVisual)refreshVimNormalLinks();else clearVimNormalLinkMarks();editor.focus();vimEnsureCursorVisible(editor,true)},0);
+      else if(forceNormal)refreshVimNormalLinks();
+      return;
     }
-    if(next===mode){setModeVisibility(next);if(forceNormal&&next==='source')refreshVimNormalLinks();return}
     mode=next;setModeVisibility(next);organizeLinkIndex=-1;organizeSectionIndex=-1;
     if(next==='organize'){
+      vimVisual=null;vimVisualAnchor=null;
       clearVimNormalLinkMarks();renderOrganize();$('organizeView').tabIndex=-1;setTimeout(()=>$('organizeView').focus({preventScroll:true}),0);
     }else{
       setTimeout(()=>{
         editor.refresh();
-        if(vimInputMode==='normal')refreshVimNormalLinks();else clearVimNormalLinkMarks();
+        if(vimInputMode==='normal'&&!vimVisual)refreshVimNormalLinks();else clearVimNormalLinkMarks();
         editor.focus();vimEnsureCursorVisible(editor,true);
       },0);
     }
@@ -1728,7 +1753,7 @@ function switchMode(next,opts={}){
 }
 function toggleViewMode(opts={}){
   const next=mode==='source'?'organize':'source';
-  return switchMode(next,next==='source'?{enterInsert:true,...opts}:opts);
+  return switchMode(next,opts);
 }
 
 function vimAllLinks(cm){
@@ -1789,6 +1814,86 @@ function toggleTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.lin
 function makeTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(taskLineInfo(line)){status('すでにチェックボックスです');return}let next;if(!line.trim())next='- [ ] ';else if(/^\s*[-*+]\s+/.test(line))next=line.replace(/^(\s*[-*+]\s+)/,'$1[ ] ');else next='- [ ] '+line;cm.replaceRange(next,{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(next.length,Math.max(6,cur.ch+6))});vimEnsureCursorVisible(cm)}
 function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLine(cur.line)||'').trim()?'\n':'';const md=before+'| 列1 | 列2 |\n| --- | --- |\n|  |  |';cm.replaceSelection(md,'end','+table');const pos=cm.getCursor();cm.setCursor({line:Math.max(0,pos.line),ch:2});vimEnsureCursorVisible(cm,true)}
 function tableCellMove(cm,dir){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(!line.includes('|'))return false;const bars=[];for(let i=0;i<line.length;i++)if(line[i]==='|')bars.push(i);if(bars.length<2)return false;const cells=[];for(let i=0;i<bars.length-1;i++)cells.push({line:cur.line,ch:Math.min(line.length,bars[i]+2)});let idx=0;for(let i=0;i<cells.length;i++)if(cells[i].ch<=cur.ch)idx=i;let targetIdx=idx+dir;if(targetIdx>=0&&targetIdx<cells.length){cm.setCursor(cells[targetIdx]);vimEnsureCursorVisible(cm);return true}const nextLine=cur.line+(dir>0?1:-1);if(nextLine<0||nextLine>=cm.lineCount())return false;const nl=cm.getLine(nextLine)||'';if(!nl.includes('|'))return false;const nb=[];for(let i=0;i<nl.length;i++)if(nl[i]==='|')nb.push(i);if(nb.length<2)return false;cm.setCursor({line:nextLine,ch:dir>0?Math.min(nl.length,nb[0]+2):Math.min(nl.length,nb[nb.length-2]+2)});vimEnsureCursorVisible(cm);return true}
+function vimPosCmp(a,b){return (a.line-b.line)||(a.ch-b.ch)}
+function vimSelExtend(cm){
+  // Re-project the visual selection from the fixed anchor to the live head,
+  // keeping the caret on the moving end so the next motion continues cleanly.
+  const anchor=vimVisualAnchor;if(!anchor)return;
+  const head=cm.getCursor('head');
+  if(vimVisual==='line'){
+    const top=Math.min(anchor.line,head.line),bot=Math.max(anchor.line,head.line);
+    const a={line:top,ch:0},b={line:bot,ch:(cm.getLine(bot)||'').length};
+    if(head.line>=anchor.line)cm.setSelection(a,b,{scroll:false});else cm.setSelection(b,a,{scroll:false});
+  }else if(vimPosCmp(anchor,head)<=0){
+    const to={line:head.line,ch:Math.min((cm.getLine(head.line)||'').length,head.ch+1)};
+    cm.setSelection(anchor,to,{scroll:false});
+  }else{
+    const from={line:anchor.line,ch:Math.min((cm.getLine(anchor.line)||'').length,anchor.ch+1)};
+    cm.setSelection(from,head,{scroll:false});
+  }
+}
+function vimVisualMotion(cm,command){
+  // CodeMirror motions collapse a non-empty selection to an edge instead of
+  // moving one unit, so collapse to the live head first, then re-extend.
+  const head=cm.getCursor('head');
+  cm.setSelection(head,head,{scroll:false});
+  cm.execCommand(command);
+  vimSelExtend(cm);
+  vimEnsureCursorVisible(cm);
+}
+function vimVisualEnter(cm,kind){
+  if(vimInputMode!=='normal'||mode!=='source')return;
+  if(vimVisual===kind){vimVisualExit(cm);return}
+  const keepAnchor=vimVisual?vimVisualAnchor:cm.getCursor('head');
+  vimVisual=kind;vimVisualAnchor=keepAnchor||cm.getCursor('head');
+  clearVimNormalLinkMarks();
+  vimSelExtend(cm);updateVimUi();vimEnsureCursorVisible(cm);
+}
+function vimVisualExit(cm){
+  const head=cm.getCursor('head');
+  vimVisual=null;vimVisualAnchor=null;
+  collapseVimSelection(cm,head);
+  updateVimUi();
+  if(vimInputMode==='normal'&&mode==='source')refreshVimNormalLinks();
+}
+function vimVisualYank(cm){
+  const linewise=vimVisual==='line';
+  const text=cm.getSelection()||'';
+  vimRegister=linewise?(text.endsWith('\n')?text:text+'\n'):text;
+  vimRegisterLinewise=linewise;
+  const sel=cm.listSelections()[0];
+  const start=sel?(vimPosCmp(sel.anchor,sel.head)<=0?sel.anchor:sel.head):cm.getCursor();
+  vimVisualExit(cm);
+  cm.setCursor(linewise?{line:start.line,ch:0}:start);
+  status(linewise?'コピーしました（行）':'コピーしました');
+}
+function vimVisualDelete(cm,thenInsert){
+  if(!currentData?.can_edit){vimVisualExit(cm);return}
+  const linewise=vimVisual==='line';
+  const sel=cm.listSelections()[0];
+  let from=cm.getCursor(),to=from;
+  if(sel){from=vimPosCmp(sel.anchor,sel.head)<=0?sel.anchor:sel.head;to=(from===sel.anchor)?sel.head:sel.anchor;}
+  const text=cm.getSelection()||'';
+  vimRegister=linewise?(text.endsWith('\n')?text:text+'\n'):text;
+  vimRegisterLinewise=linewise;
+  vimVisual=null;vimVisualAnchor=null;updateVimUi();
+  if(linewise){
+    const a=from.line,b=to.line,last=cm.lineCount()-1;
+    if(thenInsert){
+      cm.replaceRange('',{line:a,ch:0},{line:b,ch:(cm.getLine(b)||'').length},'+vim');
+      cm.setCursor({line:a,ch:0});setVimInputMode('insert',cm);return;
+    }
+    if(a<=0&&b>=last)cm.replaceRange('',{line:0,ch:0},{line:last,ch:(cm.getLine(last)||'').length},'+vim');
+    else if(b<last)cm.replaceRange('',{line:a,ch:0},{line:b+1,ch:0},'+vim');
+    else cm.replaceRange('',{line:a-1,ch:(cm.getLine(a-1)||'').length},{line:b,ch:(cm.getLine(b)||'').length},'+vim');
+    cm.setCursor({line:Math.min(a,cm.lineCount()-1),ch:0});
+  }else{
+    cm.replaceRange('',from,to,'+vim');cm.setCursor(from);
+    if(thenInsert){setVimInputMode('insert',cm);return}
+  }
+  if(vimInputMode==='normal'&&mode==='source')refreshVimNormalLinks();
+  vimEnsureCursorVisible(cm);
+}
 function handleVimKey(cm,e,viewName){
   if(mode!==viewName)return;
   const editable=!!currentData?.can_edit;
@@ -1825,7 +1930,33 @@ function handleVimKey(cm,e,viewName){
   if(e.ctrlKey||e.metaKey||e.altKey)return;
   const key=e.key;
   e.preventDefault();e.stopPropagation();
-  if(key==='Escape'){vimPendingCommand='';return}
+  if(key==='Escape'){vimPendingCommand='';if(vimVisual)vimVisualExit(cm);return}
+  // ---- VISUAL sub-mode: motions extend the selection; y/d/c/x operate on it ----
+  if(vimVisual){
+    if(key==='g'){if(vimPendingCommand==='g'){vimPendingCommand='';vimVisualMotion(cm,'goDocStart')}else vimPendingCommand='g';return}
+    vimPendingCommand='';
+    if(key==='v'){vimVisualEnter(cm,'char');return}
+    if(key==='V'){vimVisualEnter(cm,'line');return}
+    if(key==='h'||key==='ArrowLeft'){vimVisualMotion(cm,'goCharLeft');return}
+    if(key==='j'||key==='ArrowDown'){vimVisualMotion(cm,'goLineDown');return}
+    if(key==='k'||key==='ArrowUp'){vimVisualMotion(cm,'goLineUp');return}
+    if(key==='l'||key==='ArrowRight'){vimVisualMotion(cm,'goCharRight');return}
+    if(key==='w'){vimVisualMotion(cm,'goWordRight');return}
+    if(key==='b'){vimVisualMotion(cm,'goWordLeft');return}
+    if(key==='0'){vimVisualMotion(cm,'goLineStart');return}
+    if(key==='^'){vimVisualMotion(cm,'goLineStartSmart');return}
+    if(key==='$'){vimVisualMotion(cm,'goLineEnd');return}
+    if(key==='G'){vimVisualMotion(cm,'goDocEnd');return}
+    if(key==='o'){
+      const h=cm.getCursor('head'),a=vimVisualAnchor||h;
+      vimVisualAnchor={line:h.line,ch:h.ch};
+      cm.setSelection(h,a,{scroll:false});vimSelExtend(cm);vimEnsureCursorVisible(cm);return;
+    }
+    if(key==='y'||key==='Enter'){vimVisualYank(cm);return}
+    if(key==='d'||key==='x'||key==='Delete'){vimVisualDelete(cm,false);return}
+    if(key==='c'||key==='s'){vimVisualDelete(cm,true);return}
+    return; // any other key: stay in VISUAL
+  }
   if(key==='ArrowLeft'){vimPendingCommand='';vimMove(cm,'goCharLeft');return}
   if(key==='ArrowDown'){vimPendingCommand='';vimMove(cm,'goLineDown');return}
   if(key==='ArrowUp'){vimPendingCommand='';vimMove(cm,'goLineUp');return}
@@ -1869,6 +2000,8 @@ function handleVimKey(cm,e,viewName){
   if(key==='^'){vimMove(cm,'goLineStartSmart');return}
   if(key==='$'){vimMove(cm,'goLineEnd');return}
   if(key==='G'){vimMove(cm,'goDocEnd');return}
+  if(key==='v'){vimVisualEnter(cm,'char');return}
+  if(key==='V'){vimVisualEnter(cm,'line');return}
   if(!editable)return;
   if(key==='i'){setVimInputMode('insert',cm);return}
   if(key==='a'){cm.execCommand('goCharRight');setVimInputMode('insert',cm);return}

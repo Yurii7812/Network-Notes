@@ -71,10 +71,32 @@ class RepositoryContractTests(unittest.TestCase):
 
     def test_ctrl_e_opens_source_in_insert_mode(self):
         src = APP.read_text(encoding="utf-8")
-        self.assertIn("next==='source'?{enterInsert:true,...opts}:opts", src)
-        self.assertIn("if(enterInsert){", src)
+        # Entering Source always defaults to INSERT; only an explicit
+        # enterInsert===false (Esc from Organize) keeps NORMAL.
+        self.assertIn(
+            "const enterInsert=next==='source'&&!forceNormal&&opts.enterInsert!==false;",
+            src,
+        )
+        # INSERT is asserted synchronously so a slow/failed autosave cannot
+        # strand the editor in NORMAL where beforeinput blocks every key.
+        self.assertIn("function applySourceInsertState(focus){", src)
+        self.assertIn("if(enterInsert)applySourceInsertState(false);", src)
         self.assertIn("vimInputMode='insert';vimPendingCommand=''", src)
+        self.assertIn("try{await flushAutosave(true)}catch(_){}", src)
+        self.assertIn("switchMode('source',{enterInsert:false});", src)
         self.assertNotIn("toggleViewMode({forceNormal:true})", src)
+
+    def test_source_has_vim_visual_char_and_line_selection(self):
+        src = APP.read_text(encoding="utf-8")
+        # v = charwise visual, V = linewise visual, like ordinary Vim.
+        self.assertIn("if(key==='v'){vimVisualEnter(cm,'char');return}", src)
+        self.assertIn("if(key==='V'){vimVisualEnter(cm,'line');return}", src)
+        # Motions extend the selection; y/d/c operate on it.
+        self.assertIn("function vimVisualMotion(cm,command){", src)
+        self.assertIn("if(key==='y'||key==='Enter'){vimVisualYank(cm);return}", src)
+        self.assertIn("if(key==='c'||key==='s'){vimVisualDelete(cm,true);return}", src)
+        # Esc leaves VISUAL back to a single caret.
+        self.assertIn("if(key==='Escape'){vimPendingCommand='';if(vimVisual)vimVisualExit(cm);return}", src)
 
     def test_normal_tab_link_navigation_keeps_cursor_visible(self):
         src = APP.read_text(encoding="utf-8")
