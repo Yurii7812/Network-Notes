@@ -278,7 +278,10 @@ header{
   #headerRight .profileBtn{padding:4px 5px;max-width:none}
   #headerRight #profileHandle{display:none}
   #headerRight #logoutBtn{font-size:9px!important;padding:4px 5px!important}
-  #layout{height:calc(100vh - var(--nn-header-h));padding-bottom:48px}
+  /* The desktop rule above reserves a fixed graph column. The graph itself is
+     hidden on mobile, but an explicit single-column track is still required;
+     otherwise that empty track squeezes the note to only a few pixels. */
+  #layout{grid-template-columns:minmax(0,1fr);height:calc(100vh - var(--nn-header-h));padding-bottom:48px}
   #sidebar{top:var(--nn-header-h)}
   body.mobileSidebarOpen .mobileOverlay{inset:var(--nn-header-h) 0 48px}
   #socialView{height:calc(100vh - var(--nn-header-h));padding-bottom:48px}
