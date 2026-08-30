@@ -61,7 +61,10 @@ class RepositoryContractTests(unittest.TestCase):
     def test_mobile_note_content_uses_the_full_viewport_width(self):
         src = APP.read_text(encoding="utf-8")
         mobile_rules = src.split("@media (max-width:700px){", 1)[1].split("/* v54 interaction cleanup */", 1)[0]
-        self.assertIn("#layout{grid-template-columns:minmax(0,1fr);", mobile_rules)
+        self.assertIn("#layout{display:block!important;width:100%;", mobile_rules)
+        self.assertIn("#editorPane{width:100%;max-width:100%;height:100%}", mobile_rules)
+        self.assertIn("#organizeWrap,#organizeView{width:100%;max-width:100%}", mobile_rules)
+        self.assertNotIn("grid-template-columns:minmax(0,1fr)", mobile_rules)
 
     def test_ctrl_e_opens_source_in_insert_mode(self):
         src = APP.read_text(encoding="utf-8")
