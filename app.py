@@ -670,25 +670,25 @@ function refreshVimNormalLinks(){
 let vimScrollRaf=0;
 function vimEnsureCursorVisible(cm,center=false){
   if(vimScrollRaf)cancelAnimationFrame(vimScrollRaf);
-  // Ask CodeMirror to reveal the caret immediately. Link marks can change the
-  // wrapped line geometry just after a Tab jump, so verify the position again
-  // on two animation frames instead of relying on one smooth scroll.
-  try{cm.scrollIntoView(cm.getCursor(),center?Math.max(80,Math.floor(cm.getScrollInfo().clientHeight*.35)):72)}catch(_){}
+  // Use CodeMirror's scroll API rather than mutating its DOM scroller. Direct
+  // DOM scrolling can be overwritten by CodeMirror's cached scroll position,
+  // which made distant Tab link jumps appear not to move the viewport.
   const ensure=()=>{
     vimScrollRaf=0;
     try{
       const cur=cm.getCursor(),info=cm.getScrollInfo(),c=cm.charCoords(cur,'local');
       const topSafe=58,bottomSafe=72;
       let target=null;
-      if(center)target=Math.max(0,c.top-info.clientHeight*.44);
+      if(center)target=Math.max(0,(c.top+c.bottom-info.clientHeight)/2);
       else if(c.top<info.top+topSafe)target=Math.max(0,c.top-topSafe);
       else if(c.bottom>info.top+info.clientHeight-bottomSafe)target=Math.max(0,c.bottom-info.clientHeight+bottomSafe);
       if(target===null||Math.abs(target-info.top)<2)return;
-      const scroller=cm.getScrollerElement();
-      if(scroller&&typeof scroller.scrollTo==='function')scroller.scrollTo({top:target,behavior:'auto'});
-      else cm.scrollTo(null,target);
+      cm.scrollTo(null,target);
     }catch(_){}
   };
+  ensure();
+  // Collapsed link marks and wrapped lines can settle after the cursor moves.
+  // Recalculate on two frames so the final rendered caret remains centered.
   vimScrollRaf=requestAnimationFrame(()=>{
     ensure();
     vimScrollRaf=requestAnimationFrame(ensure);

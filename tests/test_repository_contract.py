@@ -51,11 +51,13 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("vimInputMode='insert';vimPendingCommand=''", src)
         self.assertNotIn("toggleViewMode({forceNormal:true})", src)
 
-    def test_insert_tab_link_navigation_keeps_cursor_visible(self):
+    def test_normal_tab_link_navigation_keeps_cursor_visible(self):
         src = APP.read_text(encoding="utf-8")
-        self.assertIn("if(vimAllLinks(cm).length){", src)
-        self.assertIn("vimJumpLink(cm,e.shiftKey?-1:1)", src)
-        self.assertIn("cm.scrollIntoView(cm.getCursor()", src)
+        self.assertIn("if(key==='Tab'){vimPendingCommand='';vimJumpLink", src)
+        self.assertNotIn("In INSERT, Tab follows", src)
+        self.assertIn("if(e.key==='Tab'&&tableCellMove", src)
+        self.assertIn("cm.scrollTo(null,target)", src)
+        self.assertIn("ensure();\n  // Collapsed link marks", src)
         self.assertIn("vimScrollRaf=requestAnimationFrame(ensure)", src)
 
 
