@@ -218,7 +218,17 @@ header{
 #docBar button{font-size:10.5px;padding:5px 7px}
 #headerRight .topNav{flex:1 1 auto;min-width:0;overflow-x:auto;justify-content:flex-start}
 #headerRight .topNav button{font-size:10.5px;padding:5px 6px}
-#headerRight #status{display:none}
+#headerRight #status{
+  display:block;position:fixed;left:50%;bottom:18px;z-index:5000;
+  min-width:0;max-width:min(520px,calc(100vw - 24px));padding:8px 12px;
+  border:1px solid #bdbdbd;border-radius:999px;background:#fff;color:#111;
+  box-shadow:0 5px 20px rgba(0,0,0,.16);font-size:12px;font-weight:650;
+  text-align:center;opacity:0;pointer-events:none;transform:translate(-50%,8px);
+  transition:opacity .16s ease,transform .16s ease;
+}
+#headerRight #status.visible{opacity:1;transform:translate(-50%,0)}
+#headerRight #status.error{border-color:#b91c1c;color:#991b1b;background:#fff7f7}
+@media(max-width:700px){#headerRight #status{bottom:60px}}
 #headerRight .profileBtn{flex:0 0 auto;padding:3px 5px;max-width:94px}
 #headerRight #profileHandle{max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #headerRight #logoutBtn{flex:0 0 auto;padding:4px 6px!important;font-size:10px!important}
@@ -373,7 +383,7 @@ header{
         <button id="adminNavOption" type="button" data-main-nav="admin">管理</button>
       </div>
     </div>
-    <span id="status"></span>
+    <span id="status" role="status" aria-live="polite" aria-atomic="true"></span>
     <button id="profileBtn" class="profileBtn" type="button" title="プロフィール"><span id="profileAvatar"></span><span id="profileHandle">user</span></button>
     <button id="logoutBtn" type="button" style="padding:5px 8px;font-size:11px">ログアウト</button>
   </div>
@@ -516,7 +526,20 @@ function syncNoteUrl(name,replace=false){
   history[fn]({note:name},'',next);
 }
 async function api(path,opts={}){const r=await fetch(path,opts);let data=null;try{data=await r.json()}catch(_){data={error:await r.text()}}if(!r.ok){if(r.status===401&&data?.auth_required)showAuth(data?.error||'ログインが必要です');throw new Error(data?.error||('HTTP '+r.status))}return data;}
-function status(msg){$('status').textContent=msg;setTimeout(()=>{if($('status').textContent===msg)$('status').textContent='';},1800)}
+let statusTimer=null;
+function status(msg,{kind='info',timeout}={}){
+  const el=$('status');
+  if(kind==='info'&&/(?:エラー|失敗|できません|見つかりません)/.test(String(msg||'')))kind='error';
+  if(statusTimer){clearTimeout(statusTimer);statusTimer=null}
+  el.textContent=String(msg||'');
+  el.classList.toggle('error',kind==='error');
+  el.classList.toggle('visible',!!msg);
+  if(!msg)return;
+  const delay=timeout??(kind==='error'?6000:2200);
+  if(delay>0)statusTimer=setTimeout(()=>{
+    if(el.textContent===String(msg)){el.classList.remove('visible');el.textContent=''}
+  },delay);
+}
 function profileUsername(){return isGuest()?'guest':(String(profile?.username||'user').trim()||'user')}
 function initials(u){const t=String(u?.display_name||u?.username||'?').trim();return (t[0]||'?').toUpperCase()}
 function secureAssetUrl(url){const s=String(url||'');const own='http://network-notes.duckdns.org/';if(s.startsWith(own))return '/'+s.slice(own.length);return s}
@@ -1580,7 +1603,7 @@ async function flushAutosave(commitRelations=true){
   saveChain=task;
   try{return await task}catch(e){
     if(current===name){dirty=true;if(needRelationCommit)relationSyncPending=true}
-    status('保存エラー: '+(e?.message||''));throw e
+    status('保存エラー: '+(e?.message||''),{kind:'error'});throw e
   }
 }
 
@@ -1637,6 +1660,7 @@ function setModeVisibility(next){
 function switchMode(next,opts={}){
   next=next==='source'?'source':'organize';
   const forceNormal=!!opts.forceNormal;
+  const enterInsert=!!opts.enterInsert&&next==='source';
   if(modeSwitchPromise)return modeSwitchPromise;
   modeSwitchPromise=(async()=>{
     await waitForImeIdle();
@@ -1651,6 +1675,12 @@ function switchMode(next,opts={}){
       if(mode==='source'&&caret){collapseVimSelection(editor,caret)}
     }
     await flushAutosave(true);
+    // Source is the writing surface. Explicit edit transitions should accept
+    // ordinary keyboard/IME input immediately, without requiring a Vim `i`.
+    if(enterInsert){
+      vimInputMode='insert';vimPendingCommand='';
+      clearVimNormalLinkMarks();applyEditorReadOnly();updateVimUi();
+    }
     if(next===mode){setModeVisibility(next);if(forceNormal&&next==='source')refreshVimNormalLinks();return}
     mode=next;setModeVisibility(next);organizeLinkIndex=-1;organizeSectionIndex=-1;
     if(next==='organize'){
@@ -1665,7 +1695,10 @@ function switchMode(next,opts={}){
   })().catch(e=>{status(e?.message||'表示切替に失敗しました');throw e}).finally(()=>{modeSwitchPromise=null});
   return modeSwitchPromise;
 }
-function toggleViewMode(opts={}){return switchMode(mode==='source'?'organize':'source',opts)}
+function toggleViewMode(opts={}){
+  const next=mode==='source'?'organize':'source';
+  return switchMode(next,next==='source'?{enterInsert:true,...opts}:opts);
+}
 
 function vimAllLinks(cm){
   const out=[];const re=/\[((?:\\.|[^\]\\])+)]\(([^)\s]+\.md)(?:\s+"label-fixed")?\)/g;
@@ -1827,9 +1860,9 @@ window.addEventListener('keydown',e=>{
     const isTextControl=['INPUT','TEXTAREA','SELECT'].includes(active?.tagName||'')||active?.isContentEditable;
     if(isTextControl&&!inCodeMirror)return;
     e.preventDefault();e.stopPropagation();
-    // Ctrl+E always leaves the editor in NORMAL, so opening Source never starts
-    // in accidental INSERT mode. This also commits pending edits first.
-    toggleViewMode({forceNormal:true}).catch(console.error);return;
+    // Ctrl+E opens Source ready for normal typing. Esc remains available for
+    // users who explicitly want Vim NORMAL mode.
+    toggleViewMode().catch(console.error);return;
   }
 },true);
 window.addEventListener('keydown',e=>{
@@ -6756,4 +6789,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
