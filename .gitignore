@@ -1,0 +1,24 @@
+# NetworkNotes persistent/runtime data lives outside this repository.
+../data/
+data/
+*.db
+*.db-wal
+*.db-shm
+local_config.json
+backups/
+
+# Python/runtime
+__pycache__/
+*.py[cod]
+*.log
+*.pid
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+*~
+
+# Temporary archives
+*.tmp
+*.bak

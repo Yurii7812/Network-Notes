@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_DIR="${NETWORKNOTES_APP_DIR:-/opt/network-notes-sns/app}"
+SERVICE="${NETWORKNOTES_SERVICE:-network-notes.service}"
+
+cd "$APP_DIR"
+
+if [[ ! -d .git ]]; then
+  echo "ERROR: $APP_DIR is not a Git working tree (.git not found)." >&2
+  exit 2
+fi
+
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  echo "ERROR: tracked files have local modifications. Commit/stash them before updating." >&2
+  git status --short
+  exit 3
+fi
+
+branch="$(git symbolic-ref --quiet --short HEAD || true)"
+if [[ -z "$branch" ]]; then
+  echo "ERROR: detached HEAD. Check out a branch before updating." >&2
+  exit 4
+fi
+
+old_commit="$(git rev-parse HEAD)"
+echo "Current: $old_commit ($branch)"
+
+git fetch origin "$branch"
+git merge --ff-only "origin/$branch"
+new_commit="$(git rev-parse HEAD)"
+echo "Updated: $new_commit"
+
+rollback() {
+  echo "Validation/startup failed; rolling app code back to $old_commit" >&2
+  git reset --hard "$old_commit"
+  sudo systemctl restart "$SERVICE" || true
+}
+trap rollback ERR
+
+python3 -m py_compile app.py
+if [[ -d tests ]]; then
+  python3 -m unittest discover -s tests -v
+fi
+
+sudo systemctl restart "$SERVICE"
+sudo systemctl is-active --quiet "$SERVICE"
+trap - ERR
+
+echo "NetworkNotes app updated successfully."
+echo "Data directory was not modified: $(dirname "$APP_DIR")/data"

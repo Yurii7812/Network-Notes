@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+PI="${NETWORKNOTES_PI:-yurii@192.168.10.107}"
+REMOTE_ROOT="${NETWORKNOTES_REMOTE_ROOT:-/opt/network-notes-sns}"
+REMOTE_ZIP="/tmp/network-notes-app.zip"
+LOCAL_ZIP="${NETWORKNOTES_LOCAL_ZIP:-$HOME/Desktop/network-notes-app.zip}"
+
+echo "Raspberry Pi の app/ だけをZIP化しています..."
+ssh "$PI" "
+set -e
+rm -f '$REMOTE_ZIP'
+cd '$REMOTE_ROOT'
+test -d app
+zip -qr '$REMOTE_ZIP' app -x 'app/.git/*' 'app/__pycache__/*' 'app/tests/__pycache__/*'
+"
+
+echo "Debian に転送しています..."
+mkdir -p "$(dirname "$LOCAL_ZIP")"
+rm -f "$LOCAL_ZIP"
+scp "$PI:$REMOTE_ZIP" "$LOCAL_ZIP"
+
+echo
+echo "完了: app/ のみ"
+ls -lh "$LOCAL_ZIP"
