@@ -2715,11 +2715,13 @@ def write_file(name: str, content: str) -> None:
     # are read-modify-write across multiple notes; a concurrent draft save must
     # never be overwritten by one of those older snapshots.
     with _GRAPH_SYNC_LOCK:
-        # Keep the creation instant verbatim. Offsets make transferred Markdown
-        # unambiguous without imposing the Web server's timezone on Local mode.
+        # Keep the creation instant verbatim, but record this write in the
+        # timezone of the machine performing it. Offsets make transferred
+        # Markdown unambiguous without imposing the Web server's timezone on
+        # Local mode.
         normalized = ensure_created_frontmatter(safe, str(content or ""))
         normalized = ensure_creator_metadata(safe, normalized)
-        normalized = remove_updated_frontmatter(normalized)
+        normalized = set_updated_frontmatter(normalized)
         atomic_text_write(VAULT / safe, normalized)
 
 
@@ -2929,14 +2931,26 @@ def datetime_sort_key(value: str) -> float:
     return dt.timestamp()
 
 
-def remove_updated_frontmatter(content: str) -> str:
-    """Remove the obsolete generated ``updated`` field without touching ``created``."""
+def set_updated_frontmatter(content: str, value: str | None = None) -> str:
+    """Set ``updated`` while leaving ``created`` and its offset untouched.
+
+    The value is refreshed on every write and placed immediately after
+    ``created`` so the metadata block stays: creator, created, updated.
+    """
+    stamp = value or local_now_iso()
     frontmatter, body = split_yaml_frontmatter(content)
     if not frontmatter:
         return content
     lines = frontmatter.splitlines()
-    lines = [line for i, line in enumerate(lines)
-             if i in {0, len(lines) - 1} or not re.match(r"^\s*updated\s*:\s*", line, re.IGNORECASE)]
+    for i in range(1, len(lines) - 1):
+        if re.match(r"^\s*updated\s*:\s*", lines[i], re.IGNORECASE):
+            lines[i] = f"updated: {stamp}"
+            break
+    else:
+        created_index = next((i for i in range(1, len(lines) - 1)
+                              if re.match(r"^\s*created\s*:\s*", lines[i], re.IGNORECASE)),
+                             len(lines) - 2)
+        lines.insert(created_index + 1, f"updated: {stamp}")
     return "\n".join(lines).rstrip() + "\n\n" + body.lstrip("\n")
 
 
@@ -3416,7 +3430,7 @@ def migrate_created_frontmatter_to_iso_offset() -> None:
 def new_note_markdown(filename: str, title: str) -> str:
     created = local_now_iso()
     creator = inferred_creator_username(filename)
-    return f"---\ncreator::{creator}\ncreated: {created}\n---\n\n# {title}\n"
+    return f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\n---\n\n# {title}\n"
 
 
 def new_timestamp_filename() -> str:

@@ -1,5 +1,6 @@
 from pathlib import Path
 import py_compile
+import re
 import unittest
 import zipfile
 import importlib.util
@@ -224,17 +225,23 @@ class MarkdownTimezoneTests(unittest.TestCase):
         created = self.module.yaml_created_value(text)
         self.assertRegex(created, r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")
         self.assertEqual(datetime.fromisoformat(created).utcoffset(), datetime.now().astimezone().utcoffset())
-        self.assertNotRegex(text, r"(?im)^\s*updated\s*:")
+        updated = re.search(r"(?im)^\s*updated\s*:\s*(.+?)\s*$", text)
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated.group(1), created)
 
-    def test_created_is_preserved_and_updated_is_not_written(self):
+    def test_created_is_preserved_and_updated_is_refreshed(self):
         name = "alice__20260830120001.md"
         original_created = "2026-08-31T02:22:53+09:00"
-        content = f"---\ncreator::alice\ncreated: {original_created}\nupdated: 2026-08-31T02:30:00+09:00\n---\n\n# Note\n"
+        stale_updated = "2026-08-31T02:30:00+09:00"
+        content = f"---\ncreator::alice\ncreated: {original_created}\nupdated: {stale_updated}\n---\n\n# Note\n"
         self.set_timezone("EST5EDT,M3.2.0,M11.1.0")
         self.module.write_file(name, content)
         saved = self.module.read_file(name)
         self.assertEqual(self.module.yaml_created_value(saved), original_created)
-        self.assertNotRegex(saved, r"(?im)^\s*updated\s*:")
+        updated = re.search(r"(?im)^\s*updated\s*:\s*(.+?)\s*$", saved)
+        self.assertIsNotNone(updated)
+        self.assertNotEqual(updated.group(1), stale_updated)
+        self.assertRegex(updated.group(1), r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")
 
     def test_different_offsets_compare_by_absolute_instant(self):
         earlier = "2026-08-31T02:22:53+09:00"
