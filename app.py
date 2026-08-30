@@ -520,6 +520,7 @@ const voterId=(()=>{let v=localStorage.getItem('networkNotesVoterId');if(!v){v=(
 const sectionSort=new Map();
 const $=id=>document.getElementById(id);
 let vimNormalLinkMarks=[];
+let vimLeaderCommandsRegistered=false;
 let pendingSourceCursorFromBody=null;
 // Vim keybindings are CodeMirror's official keymap/vim.js addon. Only two
 // things are tracked here: which editors are mid-IME-composition (so autosave
@@ -1767,14 +1768,17 @@ async function toggleTaskByOrdinal(ord){
 function toggleTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(!taskLineInfo(line)){status('この行はチェックボックスではありません');return false}cm.replaceRange(line.replace(/\[([ xX])\]/,m=>/x/i.test(m)?'[ ]':'[x]'),{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(cur.ch,cm.getLine(cur.line).length)});cm.scrollIntoView(cm.getCursor(),80);return true}
 function makeTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(taskLineInfo(line)){status('すでにチェックボックスです');return}let next;if(!line.trim())next='- [ ] ';else if(/^\s*[-*+]\s+/.test(line))next=line.replace(/^(\s*[-*+]\s+)/,'$1[ ] ');else next='- [ ] '+line;cm.replaceRange(next,{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(next.length,Math.max(6,cur.ch+6))});cm.scrollIntoView(cm.getCursor(),80)}
 function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLine(cur.line)||'').trim()?'\n':'';const md=before+'| 列1 | 列2 |\n| --- | --- |\n|  |  |';cm.replaceSelection(md,'end','+table');const pos=cm.getCursor();cm.setCursor({line:Math.max(0,pos.line),ch:2});cm.scrollIntoView(cm.getCursor(),80)}
-// ---- Custom note operations, as <leader> commands on the vim keymap ----
-// The leader is `\` (vim's traditional <leader>): it has no default binding in
-// the addon, so `\`+key resolves cleanly. <Space> can't be used here because the
-// addon resolves its built-in <Space>→l before any `<Space>xx` sequence.
-// NORMAL mode: \n new node, \p add Parent edge, \c add Child edge, \d delete
-// note, \x toggle task, \t make task, \T table, \e edges dialog, \y copy note
-// link, \l / \h next / prev link, \o open link, \b navigate back.
-let vimLeaderCommandsRegistered=false;
+// ---- Custom NORMAL-mode commands on the vim keymap ----
+// Direct keys for link navigation (these match the pre-addon layer):
+//   Enter = open the link under the cursor (else move down a line)
+//   Tab / Shift-Tab = jump to the next / previous link
+//   Backspace = navigate back
+// User mappings are unshifted to the front of the keymap, so a single-key
+// `action` mapping beats the addon's own <CR>/<BS> keyToKey defaults.
+// Everything else hangs off the `\` leader (Space can't lead: the addon
+// resolves its built-in <Space>→l before any multi-key sequence):
+//   \n new node, \p Parent edge, \c Child edge, \d delete note,
+//   \x toggle task, \t make task, \T table, \e edges dialog, \y copy link.
 function registerVimLeaderCommands(){
   if(vimLeaderCommandsRegistered||!window.CodeMirror||!CodeMirror.Vim)return;
   vimLeaderCommandsRegistered=true;
@@ -1792,15 +1796,17 @@ function registerVimLeaderCommands(){
     nnCopyLink:()=>copyCurrentNoteLink().catch(err=>status(err.message)),
     nnLinkNext:cm=>vimJumpLink(cm,1),
     nnLinkPrev:cm=>vimJumpLink(cm,-1),
-    nnOpenLink:cm=>{if(!vimOpenCursorLink(cm))status('カーソル位置にリンクがありません')},
+    nnEnter:cm=>{if(!vimOpenCursorLink(cm)){cm.execCommand('goLineDown');cm.scrollIntoView(cm.getCursor(),80)}},
     nnBack:()=>navigateBack().catch(console.error)
   };
   for(const name in defs)Vim.defineAction(name,defs[name]);
-  const map=(key,action)=>Vim.mapCommand('\\'+key,'action',action,{},{context:'normal'});
-  map('n','nnNewNode');map('p','nnEdgeOut');map('c','nnEdgeIn');map('d','nnDeleteNote');
-  map('x','nnToggleTask');map('t','nnMakeTask');map('T','nnTable');map('e','nnEdgesDialog');
-  map('y','nnCopyLink');map('l','nnLinkNext');map('h','nnLinkPrev');map('o','nnOpenLink');
-  map('b','nnBack');
+  const nmap=(keys,action)=>Vim.mapCommand(keys,'action',action,{},{context:'normal'});
+  // Direct keys.
+  nmap('<CR>','nnEnter');nmap('<Tab>','nnLinkNext');nmap('<S-Tab>','nnLinkPrev');nmap('<BS>','nnBack');
+  // `\` leader.
+  nmap('\\n','nnNewNode');nmap('\\p','nnEdgeOut');nmap('\\c','nnEdgeIn');nmap('\\d','nnDeleteNote');
+  nmap('\\x','nnToggleTask');nmap('\\t','nnMakeTask');nmap('\\T','nnTable');nmap('\\e','nnEdgesDialog');
+  nmap('\\y','nnCopyLink');
 }
 $('vimIndicator').onclick=()=>{
   try{

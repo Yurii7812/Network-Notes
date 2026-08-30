@@ -94,14 +94,21 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("if(enterInsert)sourceEnterInsert();", src)
         self.assertIn("try{await flushAutosave(true)}catch(_){}", src)
 
-    def test_note_operations_are_leader_vim_commands(self):
+    def test_normal_mode_link_keys_and_leader_commands(self):
         src = APP.read_text(encoding="utf-8")
-        # Project note-ops hang off the `\` leader so vim's own n/m/e/y/d/c are
-        # untouched. <Space> can't be the leader: the addon resolves its
-        # built-in <Space> before any multi-key sequence starting with it.
+        # The flag the one-shot guard reads must be declared before the call
+        # site (line ~"registerVimLeaderCommands()") or the whole inline script
+        # aborts on a temporal-dead-zone ReferenceError -> blank page.
+        decl = src.index("let vimLeaderCommandsRegistered=false;")
+        call = src.index("registerVimLeaderCommands();")
+        self.assertLess(decl, call)
         self.assertIn("function registerVimLeaderCommands(){", src)
-        self.assertIn("Vim.mapCommand('\\\\'+key,'action',action,{},{context:'normal'})", src)
-        self.assertIn("map('n','nnNewNode');", src)
+        self.assertIn("Vim.mapCommand(keys,'action',action,{},{context:'normal'})", src)
+        # Direct NORMAL keys: Enter opens link, Tab/Shift-Tab cycle links,
+        # Backspace navigates back.
+        self.assertIn("nmap('<CR>','nnEnter');nmap('<Tab>','nnLinkNext');nmap('<S-Tab>','nnLinkPrev');nmap('<BS>','nnBack');", src)
+        # Note-ops on the `\` leader (Space can't lead in this addon).
+        self.assertIn("nmap('\\\\n','nnNewNode');", src)
         self.assertIn("Vim.defineAction(name,defs[name])", src)
 
     def test_cursor_follow_scroll_is_delegated_to_codemirror(self):
