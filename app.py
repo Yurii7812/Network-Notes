@@ -525,6 +525,30 @@ let vimNormalLinkMarks=[];
 let pendingSourceCursorFromBody=null;
 const vimImeComposing=new WeakSet();
 const vimImeEndedAt=new WeakMap();
+// Chromium drops `compositionend` when the input field loses focus or its pane
+// is hidden mid-conversion. Without a failsafe, `vimImeComposing` stays set and
+// every keystroke is treated as "still composing": INSERT stops accepting text
+// and Escape stops working until a mouse click happens to restart the IME.
+const vimCompositionWatchdog=new WeakMap();
+function bumpVimCompositionWatchdog(cm){
+  if(vimCompositionWatchdog.has(cm))clearTimeout(vimCompositionWatchdog.get(cm));
+  // Long enough that a slow typist pausing mid-conversion is never cut off;
+  // blur and real-keydown recovery handle the common cases well before this.
+  vimCompositionWatchdog.set(cm,setTimeout(()=>forceEndVimComposition(cm),6000));
+}
+function forceEndVimComposition(cm,opts={}){
+  if(vimCompositionWatchdog.has(cm)){clearTimeout(vimCompositionWatchdog.get(cm));vimCompositionWatchdog.delete(cm)}
+  if(!vimImeComposing.has(cm))return;
+  vimImeComposing.delete(cm);
+  // A stale flag (cleared because a real non-composing keydown arrived) must not
+  // also swallow that key's Escape via the 90ms guard in handleVimKey.
+  vimImeEndedAt.set(cm,opts.stale?0:performance.now());
+  try{
+    if(cm===editor)refreshSourceFrontmatterStyle();
+    if(!loadingDoc&&cm===editor&&mode==='source'){dirty=true;queueAutosave(550)}
+  }catch(_){}
+  resolveImeIdleWaiters();
+}
 function requestedNoteFromUrl(){try{return new URL(window.location.href).searchParams.get('note')||''}catch(_){return ''}}
 function syncNoteUrl(name,replace=false){
   if(!name)return;
@@ -606,12 +630,18 @@ function bindVimIme(cm){
   const input=cm.getInputField?.();if(!input)return;
   input.addEventListener('compositionstart',()=>{
     vimImeComposing.add(cm);
+    bumpVimCompositionWatchdog(cm);
     // A timer started by the preceding keystroke must not save a half-finished
     // Japanese conversion string. Saving resumes after compositionend.
     if(autosaveTimer){clearTimeout(autosaveTimer);autosaveTimer=null}
     if(liveLinkRefreshTimer){clearTimeout(liveLinkRefreshTimer);liveLinkRefreshTimer=null}
   });
+  input.addEventListener('compositionupdate',()=>bumpVimCompositionWatchdog(cm));
+  // Focus leaving the field mid-conversion means the IME was abandoned without
+  // a compositionend. Clear the flag on the next tick so INSERT/Escape recover.
+  input.addEventListener('blur',()=>{setTimeout(()=>forceEndVimComposition(cm),0)});
   input.addEventListener('compositionend',()=>{
+    if(vimCompositionWatchdog.has(cm)){clearTimeout(vimCompositionWatchdog.get(cm));vimCompositionWatchdog.delete(cm)}
     vimImeComposing.delete(cm);
     vimImeEndedAt.set(cm,performance.now());
     // Let Chromium and the IME finish their final selection update before any
@@ -749,6 +779,15 @@ function setVimInputMode(next,cm=null){
         collapseVimSelection(active,normalCaret);
         requestAnimationFrame(()=>{collapseVimSelection(active,normalCaret);vimEnsureCursorVisible(active)});
       });
+      // A late browser-level selection repaint can still land after the two
+      // frames above and CodeMirror never learns about it, so h/j/k/l cannot
+      // clear it and only a mouse click does. One more delayed collapse plus a
+      // re-focus of the hidden input closes that window.
+      setTimeout(()=>{
+        if(mode!=='source'||vimInputMode!=='normal')return;
+        collapseVimSelection(active,normalCaret);
+        try{const inp=active.getInputField&&active.getInputField();if(inp)inp.focus({preventScroll:true})}catch(_){}
+      },60);
     }else vimEnsureCursorVisible(active);
   }catch(_){} }
 }
@@ -1692,6 +1731,9 @@ function setModeVisibility(next){
   $('editWrap').style.display='none';
   $('sourceWrap').style.display=next==='source'?'block':'none';
   $('organizeWrap').style.display=next==='organize'?'block':'none';
+  // Hiding the Source pane mid-conversion is a common way to lose
+  // compositionend; never let that strand the IME flag on the source editor.
+  if(next!=='source')setTimeout(()=>forceEndVimComposition(editor),0);
   updateViewModeToggle();updateVimUi();
 }
 function editorHasDomFocus(){
@@ -1920,7 +1962,11 @@ function handleVimKey(cm,e,viewName){
   if(vimInputMode==='insert'){
     // Do not steal keys from an active Japanese/IME composition.  Some
     // browsers report keyCode 229 instead of a normal key while composing.
-    if(e.isComposing||vimImeComposing.has(cm)||e.keyCode===229)return;
+    if(e.isComposing||e.keyCode===229)return;
+    // A real keydown with isComposing===false proves no composition is running.
+    // If the flag is still set, a compositionend was dropped: clear it (without
+    // swallowing this key) and let the keystroke through instead of freezing.
+    if(vimImeComposing.has(cm))forceEndVimComposition(cm,{stale:true});
     if(e.key==='Escape'){
       const ended=Number(vimImeEndedAt.get(cm)||0);
       if(ended&&performance.now()-ended<90){
@@ -2037,7 +2083,12 @@ function handleVimKey(cm,e,viewName){
 
 bodyEditor.on('keydown',(cm,e)=>handleVimKey(cm,e,'edit'));
 editor.on('keydown',(cm,e)=>handleVimKey(cm,e,'source'));
-$('vimIndicator').onclick=()=>setVimInputMode(vimInputMode==='normal'?'insert':'normal',editor);
+$('vimIndicator').onclick=()=>{
+  // An explicit toggle click cannot coincide with a live IME conversion, so a
+  // still-set flag here is stale and would otherwise block the NORMAL switch.
+  forceEndVimComposition(editor,{stale:true});
+  setVimInputMode(vimInputMode==='normal'?'insert':'normal',editor);
+};
 $('taskBtn').onclick=async()=>{if(!currentData?.can_edit)return;await switchMode('source');makeTaskAtCursor(editor);setVimInputMode('insert',editor);editor.focus()};
 $('tableBtn').onclick=async()=>{if(!currentData?.can_edit)return;await switchMode('source');insertMarkdownTable(editor);setVimInputMode('insert',editor);editor.focus()};
 $('viewModeToggle').addEventListener('click',toggleViewMode);

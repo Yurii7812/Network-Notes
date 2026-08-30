@@ -108,6 +108,20 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("ensure();\n  // Collapsed link marks", src)
         self.assertIn("vimScrollRaf=requestAnimationFrame(ensure)", src)
 
+    def test_stuck_ime_flag_cannot_freeze_source_typing(self):
+        src = APP.read_text(encoding="utf-8")
+        # A dropped compositionend must not leave vimImeComposing set forever
+        # (which makes INSERT ignore every key and Escape do nothing).
+        self.assertIn("function forceEndVimComposition(cm,opts={}){", src)
+        self.assertIn("const vimCompositionWatchdog=new WeakMap();", src)
+        self.assertIn("input.addEventListener('compositionupdate',()=>bumpVimCompositionWatchdog(cm));", src)
+        self.assertIn("input.addEventListener('blur',()=>{setTimeout(()=>forceEndVimComposition(cm),0)});", src)
+        # A real non-composing keydown clears a stale flag and is not swallowed.
+        self.assertIn("if(vimImeComposing.has(cm))forceEndVimComposition(cm,{stale:true});", src)
+        self.assertIn("vimImeEndedAt.set(cm,opts.stale?0:performance.now());", src)
+        # Hiding the Source pane mid-conversion also clears the flag.
+        self.assertIn("if(next!=='source')setTimeout(()=>forceEndVimComposition(editor),0);", src)
+
     def test_local_mode_uses_an_implicit_offline_workspace(self):
         src = APP.read_text(encoding="utf-8")
         self.assertIn("if LOCAL_MODE:\n            return local_workspace_user(session_user)", src)
