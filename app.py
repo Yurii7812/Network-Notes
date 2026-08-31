@@ -445,7 +445,8 @@ header{
 <section id="socialView"><div id="socialContent" class="socialInner"></div></section>
 <dialog id="newDialog" data-vim-dialog tabindex="-1"><form method="dialog" id="newForm">
 <h3 style="margin:0">ノードを追加</h3>
-<div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>i=入力 ／ Esc=ノーマル ／ t→数字=属性 ／ r→数字=関係 ／ Enter=作成 ／ q=閉じる</span></div>
+<div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>i=入力 ／ Esc=ノーマル ／ t=属性 ／ r=関係（一覧が出たら数字で選択） ／ Enter=作成 ／ q=閉じる</span></div>
+<div class="dlgPickList" style="display:none"></div>
 <label>タイトル<input id="newTitle" data-dlg-default-input required /></label>
 <label>属性<select id="newNodeType">
   <option value="論点">論点</option>
@@ -490,7 +491,7 @@ header{
 <dialog id="linkifyDialog"><form method="dialog" id="linkifyForm"><h3 style="margin:0">リンク化</h3><div class="profileHint">選択した文章は表示名として固定され、リンク先ノート名を変更しても同期しません。</div><div id="linkifySelected" class="linkifySelected"></div><label>リンク先を検索<input id="linkifySearch" placeholder="ノート名 / @ユーザー名" autocomplete="off" /></label><label>既存ノート<select id="linkifyTarget" class="linkifyTarget" size="8"></select></label><div style="border-top:1px solid var(--border);padding-top:10px"><label>新しいノートのタイトル<input id="linkifyNewTitle" maxlength="160" placeholder="選択した文章を初期値にします" /></label></div><div class="actions"><button value="cancel">キャンセル</button><button id="linkifyNewBtn" type="button">＋ 新しいノートを作成してリンク</button><button id="linkifySubmit" value="default">既存ノートにリンク</button></div></form></dialog>
 
 <dialog id="deleteNotesDialog"><form method="dialog" id="deleteNotesForm"><h3 style="margin:0">ノートを削除</h3><div class="profileHint">自分のノートだけ削除できます。Indexは削除できません。</div><div id="deleteNotesList" style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:9px;font-size:12px"></div><div class="actions"><button value="cancel">キャンセル</button><button id="deleteNotesConfirm" type="button" style="border-color:#b91c1c">削除する</button></div></form></dialog>
-<dialog id="edgeDialog" data-vim-dialog tabindex="-1"><form method="dialog" id="edgeForm"><h3 id="edgeDialogTitle" style="margin:0">エッジを追加</h3><div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>i/s=検索 ／ Esc=ノーマル ／ r→数字=関係 ／ 数字=候補選択 ／ j/k=移動 ／ n=新規 ／ p=貼付 ／ Enter=追加 ／ q=閉じる</span></div><div id="edgeDialogHint" class="profileHint"></div><label>関係<select id="edgeRelation"><option>カテゴリー</option><option>ノート</option><option>賛同</option><option>否定</option><option>質問</option><option>回答</option><option>関連</option><option>言及</option><option>雑談</option><option class="localOnlyRelation" value="公開版" hidden>公開版</option><option value="__custom__">その他...</option></select></label><label id="edgeCustomWrap" style="display:none">関係名<input id="edgeCustomRelation" maxlength="80" placeholder="関係名" /></label><div class="edgeDialogSearchRow"><label id="edgeSearchLabel">ノートを検索<input id="edgeSearch" data-dlg-default-input autocomplete="off" placeholder="タイトル・本文・@ユーザー名" /></label><label>候補<select id="edgeTarget" class="edgeTargetList" size="8"></select></label></div><label>またはMarkdownリンク / ファイル名を貼り付け<input id="edgePaste" class="edgePaste" placeholder="[ノート名](username__20260829123456.md)" /></label><div class="edgeNewBox"><div class="profileHint">または、この関係で新しいノートを作成</div><label>新しいノートのタイトル<input id="edgeNewTitle" maxlength="160" placeholder="タイトル" /></label><button id="edgeNewBtn" type="button">＋ 新しいノートを作成</button></div><div class="actions"><button value="cancel">キャンセル</button><button id="edgeSubmit" value="default">既存ノートを追加</button></div></form></dialog>
+<dialog id="edgeDialog" data-vim-dialog tabindex="-1"><form method="dialog" id="edgeForm"><h3 id="edgeDialogTitle" style="margin:0">エッジを追加</h3><div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>i/s=検索 ／ Esc=ノーマル ／ r=関係一覧 ／ 数字=候補選択 ／ j/k=移動 ／ n=新規 ／ p=貼付 ／ Enter=追加 ／ q=閉じる</span></div><div class="dlgPickList" style="display:none"></div><div id="edgeDialogHint" class="profileHint"></div><label>関係<select id="edgeRelation"><option>カテゴリー</option><option>ノート</option><option>賛同</option><option>否定</option><option>質問</option><option>回答</option><option>関連</option><option>言及</option><option>雑談</option><option class="localOnlyRelation" value="公開版" hidden>公開版</option><option value="__custom__">その他...</option></select></label><label id="edgeCustomWrap" style="display:none">関係名<input id="edgeCustomRelation" maxlength="80" placeholder="関係名" /></label><div class="edgeDialogSearchRow"><label id="edgeSearchLabel">ノートを検索<input id="edgeSearch" data-dlg-default-input autocomplete="off" placeholder="タイトル・本文・@ユーザー名" /></label><label>候補<select id="edgeTarget" class="edgeTargetList" size="8"></select></label></div><label>またはMarkdownリンク / ファイル名を貼り付け<input id="edgePaste" class="edgePaste" placeholder="[ノート名](username__20260829123456.md)" /></label><div class="edgeNewBox"><div class="profileHint">または、この関係で新しいノートを作成</div><label>新しいノートのタイトル<input id="edgeNewTitle" maxlength="160" placeholder="タイトル" /></label><button id="edgeNewBtn" type="button">＋ 新しいノートを作成</button></div><div class="actions"><button value="cancel">キャンセル</button><button id="edgeSubmit" value="default">既存ノートを追加</button></div></form></dialog>
 
 <dialog id="localExportDialog"><form method="dialog" id="localExportForm"><h3 style="margin:0">Webへエクスポート</h3><div class="profileHint">オンライン版へ送るノートと添付ファイルを選択します。ローカル専用ノート・非公開リンク・公開版の規則は自動的に適用されます。</div><div class="exportSectionTitle">ノート</div><div id="localExportNotes" class="exportList"></div><div class="actions"><button id="localExportNotesAll" type="button">ノート全選択</button><button id="localExportNotesNone" type="button">ノート解除</button></div><div class="exportSectionTitle">添付ファイル</div><div id="localExportAttachments" class="exportList"></div><div class="actions"><button id="localExportAttachmentsAll" type="button">添付全選択</button><button id="localExportAttachmentsNone" type="button">添付解除</button></div><div id="localExportSummary" class="profileHint"></div><div class="actions"><button value="cancel">キャンセル</button><button id="localExportConfirm" type="button">選択したものをWebへ送る</button></div></form></dialog>
 <dialog id="registerSaveDialog"><form method="dialog" id="registerSaveForm"><h3 style="margin:0">パスワードを今すぐ保存してください</h3><div class="passwordWarn">このサービスはパスワードの平文を保存しません。忘れた場合に現在のパスワードを表示することはできません。アカウントを作成する前に、パスワードマネージャーなどへ保存してください。</div><label>登録するパスワード<input id="registerPasswordPreview" class="registerPasswordBox" readonly /></label><div class="actions"><button id="registerCopyBtn" type="button">パスワードをコピー</button></div><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input id="registerSavedCheck" type="checkbox">保存したことを確認しました</label><div class="actions"><button value="cancel">戻る</button><button id="registerConfirmBtn" type="button" disabled>保存したので登録</button></div></form></dialog>
@@ -2186,7 +2187,8 @@ async function loadEdgeCandidates(){
   const q=$('edgeSearch').value.trim();const scope=edgeDialogMode==='incoming'?'mine':'all';
   const d=await api('/api/search?scope='+scope+'&limit=80&q='+encodeURIComponent(q));const sel=$('edgeTarget');sel.innerHTML='';
   const items=(d.results||[]).filter(x=>x.file!==current);
-  for(const x of items){const o=document.createElement('option');o.value=x.file;o.textContent=(x.title||x.file)+' · @'+(x.author?.username||'');sel.appendChild(o)}
+  // Number the first ten so a NORMAL-mode digit key picks that candidate.
+  items.forEach((x,i)=>{const o=document.createElement('option');o.value=x.file;o.textContent=(i<10?((i+1)%10)+'. ':'')+(x.title||x.file)+' · @'+(x.author?.username||'');sel.appendChild(o)});
   // Preselect the top hit so a keyboard user can just press Enter in the search
   // box to add it, or ArrowDown to pick another candidate from the list.
   if(items.length)sel.selectedIndex=0;
@@ -2237,9 +2239,43 @@ $('edgeDialog').addEventListener('close',refocusVimAfterDialog);
 //         j/k move; Enter confirms; q closes. INSERT: type text; Esc -> NORMAL.
 let dlgMode='insert',dlgPrefix='';
 function activeVimDialog(){return document.querySelector('dialog[open][data-vim-dialog]')}
+let dlgCurEntries=[];
+function dlgHidePickList(){dlgCurEntries=[];const dlg=activeVimDialog();const el=dlg&&dlg.querySelector('.dlgPickList');if(el){el.style.display='none';el.innerHTML=''}}
+function dlgPickEntries(dlg,kind){
+  if(kind==='t'){
+    return NODE_TYPE_OPTIONS.map(o=>({label:o[1],run:()=>{$('newNodeType').value=o[0];status('属性: '+nodeTypeLabel(o[0]))}}));
+  }
+  // kind === 'r'
+  const sel=dlg.id==='newDialog'?$('newRelation'):$('edgeRelation');
+  const customIn=dlg.id==='newDialog'?$('customRelation'):$('edgeCustomRelation');
+  return [...sel.options].filter(op=>!op.hidden).map(op=>({label:op.textContent,run:()=>{
+    sel.value=op.value;sel.dispatchEvent(new Event('change'));
+    if(op.value==='__custom__')dlgSetMode('insert',customIn);else status('関係: '+op.value);
+  }}));
+}
+function dlgShowPickList(kind){
+  const dlg=activeVimDialog();if(!dlg)return;
+  const el=dlg.querySelector('.dlgPickList');if(!el)return;
+  const entries=dlgPickEntries(dlg,kind);
+  dlgCurEntries=entries;
+  el.innerHTML='';
+  el.style.cssText='display:grid;gap:1px;margin:0 0 8px;padding:5px;border:1px solid var(--border);border-radius:8px;background:#fff;box-shadow:0 6px 20px rgba(0,0,0,.14);max-height:210px;overflow:auto';
+  const head=document.createElement('div');head.textContent=(kind==='t'?'属性を選択（数字キー）':'関係を選択（数字キー）');
+  head.style.cssText='font-size:10px;font-weight:800;color:var(--muted);padding:2px 4px 4px';el.appendChild(head);
+  entries.forEach((en,i)=>{
+    const row=document.createElement('button');row.type='button';
+    row.style.cssText='display:flex;gap:8px;align-items:center;text-align:left;padding:5px 7px;border:0;background:transparent;border-radius:6px;font-size:13px;cursor:pointer;width:100%';
+    const badge=i<10?String((i+1)%10):'·';
+    row.innerHTML='<b style="min-width:1.4em;text-align:center;border:1px solid var(--border);border-radius:4px;font-size:10px;padding:0 3px">'+badge+'</b><span>'+escapeHtml(en.label)+'</span>';
+    row.onmouseenter=()=>row.style.background='#eee';
+    row.onmouseleave=()=>row.style.background='transparent';
+    row.onclick=()=>{en.run();dlgHidePickList();dlgPrefix='';};
+    el.appendChild(row);
+  });
+}
 function dlgSetMode(m,target){
   const dlg=activeVimDialog();if(!dlg)return;
-  dlgMode=m;dlgPrefix='';
+  dlgMode=m;dlgPrefix='';dlgHidePickList();
   const ind=dlg.querySelector('.dlgVimMode');if(ind)ind.textContent=m==='insert'?'INSERT':'NORMAL';
   if(m==='insert'){
     const t=target||dlg.querySelector('[data-dlg-default-input]')||dlg.querySelector('input,textarea');
@@ -2265,21 +2301,17 @@ function dlgMoveEdgeTarget(step){
   t.options[i]&&t.options[i].scrollIntoView&&t.options[i].scrollIntoView({block:'nearest'});
   t.dispatchEvent(new Event('change'));
 }
-function dlgPickFromSelect(sel,n){
-  if(!sel||n<1||n>sel.options.length)return;
-  sel.selectedIndex=n-1;sel.dispatchEvent(new Event('change'));
-  return sel.value;
-}
 function dlgHandleDigit(dlg,n){
-  if(dlg.id==='newDialog'){
-    if(dlgPrefix==='t'){dlgPrefix='';const o=NODE_TYPE_OPTIONS[n-1];if(o){$('newNodeType').value=o[0];status('属性: '+nodeTypeLabel(o[0]))}return}
-    if(dlgPrefix==='r'){dlgPrefix='';const v=dlgPickFromSelect($('newRelation'),n);if(v==='__custom__')dlgSetMode('insert',$('customRelation'));else if(v)status('関係: '+v);return}
+  // A picker (t / r) is open: choose that numbered entry.
+  if(dlgPrefix==='t'||dlgPrefix==='r'){
+    const en=dlgCurEntries[n-1];dlgPrefix='';
+    if(en)en.run();
     return;
   }
+  // No picker open: on the edge dialog, a bare digit picks the Nth candidate.
   if(dlg.id==='edgeDialog'){
-    if(dlgPrefix==='r'){dlgPrefix='';const v=dlgPickFromSelect($('edgeRelation'),n);if(v==='__custom__')dlgSetMode('insert',$('edgeCustomRelation'));else if(v)status('関係: '+v);return}
-    const t=$('edgeTarget');if(n<=t.options.length){t.selectedIndex=n-1;t.dispatchEvent(new Event('change'));t.options[n-1]&&t.options[n-1].scrollIntoView&&t.options[n-1].scrollIntoView({block:'nearest'})}
-    return;
+    const t=$('edgeTarget');
+    if(n<=t.options.length){t.selectedIndex=n-1;t.dispatchEvent(new Event('change'));t.options[n-1]&&t.options[n-1].scrollIntoView&&t.options[n-1].scrollIntoView({block:'nearest'})}
   }
 }
 window.addEventListener('keydown',e=>{
@@ -2296,13 +2328,14 @@ window.addEventListener('keydown',e=>{
   }
   // NORMAL mode — keystrokes are commands, never text.
   e.stopPropagation();
+  if(/^[0-9]$/.test(e.key)){e.preventDefault();dlgHandleDigit(dlg,e.key==='0'?10:Number(e.key));dlgHidePickList();return}
+  if(e.key==='t'&&dlg.id==='newDialog'){e.preventDefault();dlgPrefix='t';dlgShowPickList('t');return}
+  if(e.key==='r'){e.preventDefault();dlgPrefix='r';dlgShowPickList('r');return}
+  dlgHidePickList();
   if(e.key==='Escape'){e.preventDefault();dlgCancelDialog(dlg);return}
   if(e.key==='Enter'){e.preventDefault();dlgConfirm();return}
   if(e.key==='q'){e.preventDefault();dlgCancelDialog(dlg);return}
   if(e.key==='i'){e.preventDefault();dlgSetMode('insert');return}
-  if(/^[0-9]$/.test(e.key)){e.preventDefault();dlgHandleDigit(dlg,e.key==='0'?10:Number(e.key));return}
-  if(e.key==='t'&&dlg.id==='newDialog'){e.preventDefault();dlgPrefix='t';status('属性の番号を押してください（1=論点 … 7=カテゴリー 8=ノード）');return}
-  if(e.key==='r'){e.preventDefault();dlgPrefix='r';status('関係の番号を押してください');return}
   if(dlg.id==='edgeDialog'){
     if(e.key==='s'||e.key==='/'){e.preventDefault();dlgSetMode('insert',$('edgeSearch'));return}
     if(e.key==='p'){e.preventDefault();dlgSetMode('insert',$('edgePaste'));return}
@@ -2312,7 +2345,7 @@ window.addEventListener('keydown',e=>{
   }
   dlgPrefix='';
 },true);
-function dlgCancelDialog(dlg){dlgMode='normal';dlgPrefix='';try{dlg.close()}catch(_){}}
+function dlgCancelDialog(dlg){dlgHidePickList();dlgMode='normal';dlgPrefix='';try{dlg.close()}catch(_){}}
 // Esc never auto-closes these dialogs; our keydown layer routes it
 // (INSERT -> NORMAL, NORMAL -> close). Closing is always an explicit .close().
 for(const id of ['newDialog','edgeDialog'])$(id).addEventListener('cancel',e=>{
