@@ -2630,6 +2630,38 @@ async function openLocalExportDialog(){
     refresh();$('localExportDialog').showModal();status('送信する内容を選択してください');
   }catch(e){status(e.message)}
 }
+async function renderUploadsCard(){
+  const el=$('uploadsList');if(!el)return;
+  el.innerHTML='<div class="profileHint">読み込み中...</div>';
+  let files=[];
+  try{files=(await api('/api/attachments')).files||[]}catch(e){el.innerHTML='<div class="profileHint">'+escapeHtml(e.message)+'</div>';return}
+  if(!files.length){el.innerHTML='<div class="profileHint">アップロードした写真・ファイルはまだありません。</div>';return}
+  el.innerHTML='';
+  const box='width:100%;height:110px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:#f0f0f0;object-fit:cover;overflow:hidden;font-size:11px;color:var(--muted)';
+  for(const f of files){
+    const it=document.createElement('div');
+    it.style.cssText='display:flex;flex-direction:column;gap:5px;border:1px solid var(--border);border-radius:9px;padding:7px;background:#fff';
+    const used=f.used_in.length?('使用 '+f.used_in.length+'件'):'未使用';
+    it.innerHTML=(f.is_image
+        ?'<a href="'+escapeHtml(f.url)+'" target="_blank" rel="noopener"><img src="'+escapeHtml(f.url)+'" alt="" loading="lazy" style="'+box+'"></a>'
+        :'<a href="'+escapeHtml(f.url)+'" target="_blank" rel="noopener" style="'+box+'text-decoration:none">'+escapeHtml((f.name.split('.').pop()||'file').toUpperCase())+'</a>')
+      +'<div class="uploadName" title="'+escapeHtml(f.name)+'" style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escapeHtml(f.name)+'</div>'
+      +'<small style="font-size:9px;color:var(--muted)">'+fmtBytes(f.bytes)+' · '+escapeHtml((f.modified||'').slice(0,10))+' · '+escapeHtml(used)+'</small>'
+      +'<button type="button" data-del="'+escapeHtml(f.name)+'" style="font-size:10px;padding:3px 6px;border-color:#b91c1c;align-self:flex-start">削除</button>';
+    el.appendChild(it);
+  }
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+    const name=b.dataset.del,f=files.find(x=>x.name===name);
+    const warn=(f&&f.used_in.length)?('\n\nこのファイルは '+f.used_in.length+' 件のノートで使われています。削除すると、その画像・リンクは表示されなくなります。'):'';
+    if(!confirm('「'+name+'」を削除しますか？'+warn))return;
+    try{
+      const r=await api('/api/attachment-delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+      status('削除しました'+((r.referenced_by&&r.referenced_by.length)?'（'+r.referenced_by.length+'件のノートで参照されていました）':''));
+      await renderUploadsCard();
+      if(current){try{const d=await api('/api/file?name='+encodeURIComponent(current)+'&voter='+encodeURIComponent(voterId));currentData=d;setEditorsFromRaw(d.content);dirty=false;renderEditEdges();if(mode==='organize')renderOrganize()}catch(_){}}
+    }catch(e){status(e.message)}
+  });
+}
 async function renderDataPage(){
   const root=$('socialContent');root.innerHTML=headerWithExpand('データ・バックアップ')+'<div class="emptyState">読み込み中...</div>';bindExpand();
   const q=await api('/api/quota');
@@ -2643,7 +2675,9 @@ async function renderDataPage(){
     syncCard='<section class="dataCard"><h3>NetworkNotes Local</h3><p>ローカル版ではMarkdownをPCに保存し、公開するノートだけWebへ送れます。</p><div class="actions"><button id="openDownloadBtn" type="button">ローカル版をダウンロード</button><button id="issueSyncTokenBtn" type="button">ローカル同期キーを発行</button></div><div id="syncTokenResult" class="localHint">同期キーは発行時にだけ表示します。ローカル版の「データ」画面へ貼り付けてください。</div></section>';
   }
   const blockCard=profile?.local_mode?'':('<section class="dataCard"><h3>ブロック中</h3>'+(blockedUsers.length?blockedUsers.map(u=>'<div class="listItem">@'+escapeHtml(u.username)+' <button data-unblock-user="'+u.id+'" type="button">解除</button></div>').join(''):'<p>ブロック中のアカウントはありません。</p>')+'</section>');
-  root.innerHTML=headerWithExpand('データ・バックアップ')+'<div class="dataGrid"><section class="dataCard"><h3>使用量</h3>'+quota+'</section><section class="dataCard"><h3>ローカルバックアップ</h3><p>自分のMarkdownと添付ファイルをZIPとして保存します。定期的なローカルバックアップを推奨します。</p><div class="actions"><button id="backupExportBtn" type="button">バックアップをダウンロード</button><button id="backupImportBtn" type="button">ZIPから復元</button><input id="backupImportInput" type="file" accept="application/zip,.zip" hidden></div></section>'+syncCard+blockCard+'</div>';bindExpand();
+  const uploadsCard='<section class="dataCard" style="grid-column:1/-1"><h3>アップロードした写真・ファイル</h3><p>ノートに貼り付けた画像・PDF・テキストの一覧です。使わなくなったものはここで削除できます。</p><div id="uploadsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;max-height:380px;overflow:auto;margin-top:6px"></div></section>';
+  root.innerHTML=headerWithExpand('データ・バックアップ')+'<div class="dataGrid"><section class="dataCard"><h3>使用量</h3>'+quota+'</section><section class="dataCard"><h3>ローカルバックアップ</h3><p>自分のMarkdownと添付ファイルをZIPとして保存します。定期的なローカルバックアップを推奨します。</p><div class="actions"><button id="backupExportBtn" type="button">バックアップをダウンロード</button><button id="backupImportBtn" type="button">ZIPから復元</button><input id="backupImportInput" type="file" accept="application/zip,.zip" hidden></div></section>'+uploadsCard+syncCard+blockCard+'</div>';bindExpand();
+  renderUploadsCard().catch(e=>status(e.message));
   $('backupExportBtn').onclick=()=>{window.location.href='/api/backup-export'};
   $('backupImportBtn').onclick=()=>{$('backupImportInput').value='';$('backupImportInput').click()};
   $('backupImportInput').onchange=()=>importBackupFile($('backupImportInput').files?.[0]).catch(e=>status(e.message));
@@ -5084,6 +5118,74 @@ def save_attachment(user_id: int, data_url: str, original_name: str) -> dict:
     return {"url": url, "markdown": markdown, "name": label, "size": len(raw)}
 
 
+MEDIA_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+
+def user_media_files(user_id: int) -> list[dict]:
+    """Every file this user has uploaded (images / PDF / text), newest first.
+
+    Avatars live in a separate folder and are not listed here. Each entry says
+    which of the user's own notes still reference it.
+    """
+    uid = int(user_id)
+    folder = MEDIA_DIR / f"u{uid}"
+    if not folder.is_dir():
+        return []
+    contents: dict[str, str] = {}
+    try:
+        for n in user_files(uid):
+            try:
+                contents[n] = read_file(n)
+            except OSError:
+                pass
+    except Exception:
+        pass
+    out: list[dict] = []
+    for p in folder.iterdir():
+        if not p.is_file() or p.name.startswith("."):
+            continue
+        url = f"/media/u{uid}/{p.name}"
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        used = sorted({title_of(c, n) or n for n, c in contents.items() if url in c})
+        out.append({
+            "name": p.name,
+            "url": url,
+            "bytes": st.st_size,
+            "modified": datetime.fromtimestamp(st.st_mtime).astimezone().isoformat(timespec="seconds"),
+            "is_image": p.suffix.lower() in MEDIA_IMAGE_EXTS,
+            "used_in": used,
+        })
+    out.sort(key=lambda x: x["modified"], reverse=True)
+    return out
+
+
+def delete_user_media_file(user_id: int, name: str) -> dict:
+    """Delete one uploaded file from the user's own media folder."""
+    uid = int(user_id)
+    safe = Path(str(name or "")).name
+    folder = MEDIA_DIR / f"u{uid}"
+    target = folder / safe
+    if not safe or safe.startswith(".") or target.parent != folder or not target.is_file():
+        raise ValueError("ファイルが見つかりません")
+    url = f"/media/u{uid}/{safe}"
+    referenced: list[str] = []
+    try:
+        for n in user_files(uid):
+            try:
+                c = read_file(n)
+            except OSError:
+                continue
+            if url in c:
+                referenced.append(title_of(c, n) or n)
+    except Exception:
+        pass
+    target.unlink()
+    return {"deleted": safe, "referenced_by": sorted(set(referenced))}
+
+
 def issue_local_sync_token(user_id: int) -> str:
     token = "nn_" + secrets.token_urlsafe(32)
     digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -6603,6 +6705,9 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/quota":
                 if not user: raise AuthRequiredError("データ管理にはログインが必要です")
                 return self.json_response(quota_usage(uid))
+            if u.path == "/api/attachments":
+                if not user: raise AuthRequiredError("アップロード一覧にはログインが必要です")
+                return self.json_response({"files": user_media_files(uid)})
             if u.path == "/api/saved-searches":
                 if not user: raise AuthRequiredError("検索条件の保存にはログインが必要です")
                 with db_conn() as con: rows=[dict(r) for r in con.execute("SELECT id,name,query,created_at FROM saved_searches WHERE user_id=? ORDER BY id DESC",(uid,)).fetchall()]
@@ -7035,6 +7140,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response(save_inline_image(uid, str(body.get("data_url", "")), str(body.get("name", "image"))))
             if u.path == "/api/upload-attachment":
                 return self.json_response(save_attachment(uid, str(body.get("data_url", "")), str(body.get("name", "file"))))
+            if u.path == "/api/attachment-delete":
+                return self.json_response(delete_user_media_file(uid, str(body.get("name", ""))))
             if u.path == "/api/file":
                 name = safe_name(body["name"])
                 if not can_edit_note(uid,name):
