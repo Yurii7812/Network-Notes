@@ -186,7 +186,11 @@ button:hover{background:#f3f3f3}
 .previewSection{margin:.18em 0 .72em}.previewSection h1,.previewSection h2,.previewSection h3{margin:.46em 0 .2em}.previewSection h1{font-size:2em;border-bottom:1px solid var(--border);padding-bottom:.18em}.previewSection h2{font-size:1.55em;border-bottom:1px solid var(--border);padding-bottom:.14em}.previewSection h3{font-size:1.25em}.previewLine{line-height:1.68;margin:.24em 0}.previewLink{display:flex;gap:7px;align-items:center;padding:4px 6px;margin:1px 0;border-radius:6px;background:#fff;min-height:30px}.previewLink:hover{background:#f3f3f3}.previewLink a{flex:1;min-width:0;color:var(--link);text-decoration:none;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.28;word-break:break-word}.keyboardSelected{background:#e5e5e5!important;outline:2px solid #000;outline-offset:2px;border-radius:4px}.keyboardSectionSelected>.sectionHead{background:#f1f1f1;outline:2px solid #000;outline-offset:3px;border-radius:5px}.metrics{font-size:10px;color:var(--muted);white-space:nowrap}.sectionHead{display:flex;align-items:center;gap:7px}.sectionHead .heading{flex:1}.sectionSort{width:auto;min-width:108px;padding:3px 5px;border-radius:6px;border:1px solid var(--border);background:Field;color:FieldText;font-size:10px;margin-bottom:0}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--soft);border-radius:4px;padding:.08em .3em}
 .relationChoices{display:flex;flex-wrap:wrap;gap:7px;max-width:520px}.relationChoice{padding:7px 11px;border-radius:999px;background:#fff;color:#000}.relationChoice.selected{background:#e5e5e5;border-color:#8f8f8f;font-weight:700}.relationChoice.pageItem::after{content:' · このページ';font-size:10px;opacity:.55;font-weight:400}
-dialog{border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:12px;padding:18px;min-width:360px;background:Canvas;color:CanvasText}dialog form{display:grid;gap:12px}label{display:grid;gap:5px;font-size:13px}input,textarea{padding:8px 9px;border-radius:7px;border:1px solid color-mix(in srgb,CanvasText 24%,transparent);background:Field;color:FieldText}.profileBio{min-height:92px;resize:vertical;font:inherit}.profileHint{font-size:11px;color:var(--muted)}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}#status{font-size:12px;opacity:.72;min-width:120px;text-align:right}
+dialog{border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:12px;padding:18px;min-width:360px;max-height:calc(100vh - 36px);overflow:auto;background:Canvas;color:CanvasText}dialog form{display:grid;gap:12px}
+.dlgPickList{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;min-width:min(320px,92vw);max-width:min(440px,92vw);max-height:78vh;overflow-y:auto;padding:6px;border:1px solid var(--border,#ccc);border-radius:10px;background:#fff;box-shadow:0 14px 44px rgba(0,0,0,.28)}
+.dlgPickList>button{display:flex;gap:8px;align-items:center;text-align:left;padding:6px 8px;border:0;border-radius:6px;font-size:13px;cursor:pointer;width:100%;background:transparent}
+.dlgPickList>button.sel,.dlgPickList>button:hover{background:#eee}
+.dlgPickList>button>b{min-width:1.6em;text-align:center;border:1px solid var(--border,#ccc);border-radius:4px;font-size:10px;padding:0 3px}label{display:grid;gap:5px;font-size:13px}input,textarea{padding:8px 9px;border-radius:7px;border:1px solid color-mix(in srgb,CanvasText 24%,transparent);background:Field;color:FieldText}.profileBio{min-height:92px;resize:vertical;font:inherit}.profileHint{font-size:11px;color:var(--muted)}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}#status{font-size:12px;opacity:.72;min-width:120px;text-align:right}
 
 .authGate{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#fff}.authGate.hidden{display:none}.authCard{width:min(420px,calc(100vw - 32px));border:1px solid var(--border);border-radius:14px;padding:28px;background:#fff}.authCard h1{margin:0 0 8px;font-size:26px}.authCard p{margin:0 0 22px;color:var(--muted);font-size:13px}.authActions{display:flex;gap:8px;margin-top:6px}.authActions button{flex:1}.authError{min-height:20px;margin-top:10px;color:#b91c1c;font-size:12px}
 .topNav{display:flex;gap:2px;min-width:0;flex:0 1 auto;overflow-x:auto;scrollbar-width:none}.topNav::-webkit-scrollbar{display:none}.topNav button{border:0;padding:5px 7px;background:transparent;font-size:11px;line-height:1.15;white-space:nowrap;flex:0 0 auto}.topNav button:hover,.topNav button.active{background:#e5e5e5}.profileBtn{display:flex;align-items:center;gap:5px;padding:4px 6px;font-size:11px;flex:0 0 auto}.avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;background:#000;color:#fff;display:inline-grid;place-items:center;font-size:12px;font-weight:750;flex:0 0 auto}.avatar.small{width:22px;height:22px;font-size:10px}.avatar.large{width:72px;height:72px;font-size:24px}.avatarPreview{display:flex;align-items:center;gap:12px}.avatarPreview input{max-width:240px}
@@ -386,6 +390,7 @@ header{
     <div id="docBar">
       <div id="fileTitle">Index.md</div>
       <button id="viewModeToggle" class="viewModeToggle" type="button" aria-label="整理ビューとソースを切替" title="Ctrl+E: 整理ビュー / ソース切替">整理ビュー</button>
+      <button id="helpBtn" type="button" title="キーボードショートカット (?)">?</button>
       <button id="vimIndicator" class="vimIndicator insert" type="button" title="Esc: NORMAL / i: INSERT">VIM INSERT</button>
       <button id="newRootBtn" class="guestWriteBtn" type="button">＋ ノートを作成</button>
       <button id="contextActionBtn" title="Vim: em">移動・分類</button>
@@ -483,7 +488,9 @@ header{
 <dialog id="linkifyDialog"><form method="dialog" id="linkifyForm"><h3 style="margin:0">リンク化</h3><div class="profileHint">選択した文章は表示名として固定され、リンク先ノート名を変更しても同期しません。</div><div id="linkifySelected" class="linkifySelected"></div><label>リンク先を検索<input id="linkifySearch" placeholder="ノート名 / @ユーザー名" autocomplete="off" /></label><label>既存ノート<select id="linkifyTarget" class="linkifyTarget" size="8"></select></label><div style="border-top:1px solid var(--border);padding-top:10px"><label>新しいノートのタイトル<input id="linkifyNewTitle" maxlength="160" placeholder="選択した文章を初期値にします" /></label></div><div class="actions"><button value="cancel">キャンセル</button><button id="linkifyNewBtn" type="button">＋ 新しいノートを作成してリンク</button><button id="linkifySubmit" value="default">既存ノートにリンク</button></div></form></dialog>
 
 <dialog id="deleteNotesDialog"><form method="dialog" id="deleteNotesForm"><h3 style="margin:0">ノートを削除</h3><div class="profileHint">自分のノートだけ削除できます。Indexは削除できません。</div><div id="deleteNotesList" style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:9px;font-size:12px"></div><div class="actions"><button value="cancel">キャンセル</button><button id="deleteNotesConfirm" type="button" style="border-color:#b91c1c">削除する</button></div></form></dialog>
-<dialog id="edgeDialog" data-vim-dialog tabindex="-1"><form method="dialog" id="edgeForm"><h3 id="edgeDialogTitle" style="margin:0">エッジを追加</h3><div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>i/s=検索 ／ Esc=ノーマル ／ r=関係 ／ 英数字=候補選択 ／ ↑↓=移動 ／ f/b=ページ ／ N=新規 ／ p=貼付 ／ Enter=追加 ／ q=閉じる</span></div><div class="dlgPickList" style="display:none"></div><div id="edgeDialogHint" class="profileHint"></div><label>関係<button type="button" id="edgeRelationBtn" class="dlgCombo" style="text-align:left;width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;font:inherit"></button></label><label id="edgeCustomWrap" style="display:none">関係名<input id="edgeCustomRelation" maxlength="80" placeholder="関係名" /></label><div class="edgeDialogSearchRow"><label id="edgeSearchLabel">ノートを検索<input id="edgeSearch" data-dlg-default-input autocomplete="off" placeholder="タイトル・本文・@ユーザー名" /></label><label>候補<select id="edgeTarget" class="edgeTargetList" size="10"></select></label></div><label>またはMarkdownリンク / ファイル名を貼り付け<input id="edgePaste" class="edgePaste" placeholder="[ノート名](username__20260829123456.md)" /></label><div class="edgeNewBox"><div class="profileHint">または、この関係で新しいノートを作成</div><label>新しいノートのタイトル<input id="edgeNewTitle" maxlength="160" placeholder="タイトル" /></label><button id="edgeNewBtn" type="button">＋ 新しいノートを作成</button></div><div class="actions"><button value="cancel">キャンセル</button><button id="edgeSubmit" value="default">既存ノートを追加</button></div></form></dialog>
+<dialog id="edgeDialog" data-vim-dialog tabindex="-1"><form method="dialog" id="edgeForm"><h3 id="edgeDialogTitle" style="margin:0">エッジを追加</h3><div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>r=関係 ／ s=ノート検索 ／ n=新規ノート ／ p=貼付 ／ Enter=追加 ／ q=閉じる</span></div><div class="dlgPickList" style="display:none"></div><div id="edgeDialogHint" class="profileHint"></div><label>関係<button type="button" id="edgeRelationBtn" class="dlgCombo" style="text-align:left;width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;font:inherit"></button></label><label id="edgeCustomWrap" style="display:none">関係名<input id="edgeCustomRelation" maxlength="80" placeholder="関係名" /></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">対象ノート: <b id="edgeTargetLabel">未選択</b><button type="button" id="edgePickBtn">ノートを検索 (s)</button></div><div id="edgeNewWrap" style="display:none;gap:8px"><label>新しいノートのタイトル<input id="edgeNewTitle" maxlength="160" placeholder="タイトル" /></label><button id="edgeNewBtn" type="button">＋ この関係で新しいノートを作成</button></div><label id="edgePasteWrap" style="display:none">Markdownリンク / ファイル名<input id="edgePaste" class="edgePaste" placeholder="[ノート名](username__20260829123456.md)" /></label><div class="actions"><button value="cancel">キャンセル</button><button id="edgeSubmit" value="default">追加</button></div></form></dialog>
+<dialog id="notePickDialog" tabindex="-1"><div style="font-size:10px;color:var(--muted);margin-bottom:7px">入力=検索 ／ ↑↓ or Ctrl-n/Ctrl-p=移動 ／ Enter=開く ／ Esc=閉じる</div><input id="notePickInput" placeholder="ノートを検索…" autocomplete="off" style="width:100%" /><div id="notePickResults" style="max-height:52vh;overflow:auto;margin-top:8px;display:grid;gap:2px"></div></dialog>
+<dialog id="shortcutsDialog" tabindex="-1"><h3 style="margin:0 0 8px">キーボードショートカット</h3><div id="shortcutsBody" style="font-size:12px;line-height:1.75"></div><div class="actions"><button value="cancel">閉じる (Esc)</button></div></dialog>
 
 <dialog id="localExportDialog"><form method="dialog" id="localExportForm"><h3 style="margin:0">Webへエクスポート</h3><div class="profileHint">オンライン版へ送るノートと添付ファイルを選択します。ローカル専用ノート・非公開リンク・公開版の規則は自動的に適用されます。</div><div class="exportSectionTitle">ノート</div><div id="localExportNotes" class="exportList"></div><div class="actions"><button id="localExportNotesAll" type="button">ノート全選択</button><button id="localExportNotesNone" type="button">ノート解除</button></div><div class="exportSectionTitle">添付ファイル</div><div id="localExportAttachments" class="exportList"></div><div class="actions"><button id="localExportAttachmentsAll" type="button">添付全選択</button><button id="localExportAttachmentsNone" type="button">添付解除</button></div><div id="localExportSummary" class="profileHint"></div><div class="actions"><button value="cancel">キャンセル</button><button id="localExportConfirm" type="button">選択したものをWebへ送る</button></div></form></dialog>
 <dialog id="registerSaveDialog"><form method="dialog" id="registerSaveForm"><h3 style="margin:0">パスワードを今すぐ保存してください</h3><div class="passwordWarn">このサービスはパスワードの平文を保存しません。忘れた場合に現在のパスワードを表示することはできません。アカウントを作成する前に、パスワードマネージャーなどへ保存してください。</div><label>登録するパスワード<input id="registerPasswordPreview" class="registerPasswordBox" readonly /></label><div class="actions"><button id="registerCopyBtn" type="button">パスワードをコピー</button></div><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input id="registerSavedCheck" type="checkbox">保存したことを確認しました</label><div class="actions"><button value="cancel">戻る</button><button id="registerConfirmBtn" type="button" disabled>保存したので登録</button></div></form></dialog>
@@ -1330,7 +1337,7 @@ function renderEdgeZone(root,direction){
     edgeEditOrder[direction]=[];
     const legend=document.createElement('div');legend.className='edgeEditLegend';
     legend.style.cssText='font-size:10.5px;color:var(--muted);line-height:1.7;margin:2px 0 4px';
-    legend.textContent='数字: 行を選択 ／ a: 全選択 ／ s: 解除 ／ r+数字: 関係を変更 ／ d: 削除 ／ Esc: 終了  ｜ '+NEW_NOTE_RELATIONS.map((r,i)=>'['+((i+1)%10)+']'+r).join(' ');
+    legend.textContent='数字: 行を選択 ／ a: 全選択 ／ s: 解除 ／ r+数字: 関係を変更 ／ d: 削除 ／ e: 展開 ／ o: 他人の関係 ／ Esc: 終了  ｜ '+NEW_NOTE_RELATIONS.map((r,i)=>'['+((i+1)%10)+']'+r).join(' ');
     zone.appendChild(legend);
   }
   const edges=rawEdges.filter(e=>showOtherEdgeNodes[direction]||ownEdge(e));
@@ -1986,6 +1993,7 @@ function registerVimLeaderCommands(){
     nnTable:cm=>{if(canEdit())insertMarkdownTable(cm)},
     nnEdgesDialog:cm=>openOrganizeEdgesDialog(vimLinkFileAtCursor(cm)).catch(err=>status(err.message)),
     nnCopyLink:()=>copyCurrentNoteLink().catch(err=>status(err.message)),
+    nnNoteFind:()=>openNotePicker(),
     nnLinkNext:cm=>vimJumpLink(cm,1),
     nnLinkPrev:cm=>vimJumpLink(cm,-1),
     nnEnter:cm=>{if(!vimOpenCursorLink(cm))cm.execCommand('goLineDown');},
@@ -1998,7 +2006,7 @@ function registerVimLeaderCommands(){
   // `\` leader.
   nmap('\\n','nnNewNode');nmap('\\p','nnEdgeOut');nmap('\\c','nnEdgeIn');nmap('\\d','nnDeleteNote');
   nmap('\\x','nnToggleTask');nmap('\\t','nnMakeTask');nmap('\\T','nnTable');nmap('\\e','nnEdgesDialog');
-  nmap('\\y','nnCopyLink');
+  nmap('\\y','nnCopyLink');nmap('\\f','nnNoteFind');
 }
 $('vimIndicator').onclick=()=>{
   try{
@@ -2052,6 +2060,8 @@ window.addEventListener('keydown',e=>{
     if(e.key==='s'){e.preventDefault();selectedEdgeKeys[editDir].clear();orgKeyPrefix='';renderOrganize();return}
     if(e.key==='r'){e.preventDefault();orgKeyPrefix=orgKeyPrefix==='r'?'':'r';status(orgKeyPrefix==='r'?'関係の番号を押してください（1=論点 … 0=無記）':'');return}
     if(e.key==='d'||e.key==='Delete'){e.preventDefault();orgKeyPrefix='';deleteSelectedEdges(editDir);return}
+    if(e.key==='e'){e.preventDefault();edgeExpandAll[editDir]=!edgeExpandAll[editDir];if(!edgeExpandAll[editDir])edgeExpandedGroups[editDir].clear();renderOrganize();return}
+    if(e.key==='o'){e.preventDefault();showOtherEdgeNodes[editDir]=!showOtherEdgeNodes[editDir];localStorage.setItem(editDir==='outgoing'?'nnShowOtherOutgoing':'nnShowOtherIncoming',showOtherEdgeNodes[editDir]?'1':'0');renderOrganize();return}
     orgKeyPrefix='';
   }else if(plain){
     if(e.key==='t'){e.preventDefault();orgKeyPrefix='t';status('属性の番号を押してください（1=論点 … 7=カテゴリー 8=ノード）');return}
@@ -2129,15 +2139,15 @@ const NODE_TYPE_CHOICES=[
   {value:'論点',label:'論点'},{value:'見解',label:'見解'},{value:'支持',label:'支持'},
   {value:'反対',label:'反対'},{value:'補足',label:'補足'},{value:'まとめ',label:'まとめ'},
   {value:'カテゴリー',label:'カテゴリー'},
-  {value:'',label:'指定しない'},{value:'__custom__',label:'その他（自由入力）'},
+  {value:'',label:'選択しない'},{value:'__custom__',label:'その他（自由入力）'},
 ];
 const RELATION_CHOICES=[
   {value:'論点',label:'論点'},{value:'見解',label:'見解'},{value:'支持',label:'支持'},
   {value:'反対',label:'反対'},{value:'補足',label:'補足'},{value:'まとめ',label:'まとめ'},
   {value:'カテゴリー',label:'カテゴリー'},{value:'関連',label:'関連'},{value:'分割',label:'分割'},
-  {value:'',label:'指定しない'},{value:'__custom__',label:'その他（自由入力）'},
+  {value:'',label:'選択しない'},{value:'__custom__',label:'その他（自由入力）'},
 ];
-function choiceLabel(choices,v){const c=choices.find(x=>x.value===v);return c?c.label:(v||'指定しない')}
+function choiceLabel(choices,v){const c=choices.find(x=>x.value===v);return c?c.label:(v||'選択しない')}
 // --- new-note dialog: 属性 mirrors into 関係 until the user picks a relation ---
 let newNodeTypeVal='',newRelationVal='',newRelationTouched=false;
 function updateNewCombos(){
@@ -2246,42 +2256,131 @@ function updateEdgeCombo(){
   $('edgeCustomWrap').style.display=edgeRelationVal==='__custom__'?'grid':'none';
 }
 function setEdgeRelation(v){edgeRelationVal=v;if(v==='__custom__'){updateEdgeCombo();dlgSetMode('insert',$('edgeCustomRelation'));return}updateEdgeCombo()}
-function currentEdgeRelation(){return edgeRelationVal==='__custom__'?$('edgeCustomRelation').value.trim():(edgeRelationVal||'指定しない')}
+function currentEdgeRelation(){return edgeRelationVal==='__custom__'?$('edgeCustomRelation').value.trim():(edgeRelationVal||'選択しない')}
 $('edgeRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:RELATION_CHOICES,current:edgeRelationVal,onPick:setEdgeRelation});
 $('edgeCustomRelation').addEventListener('input',updateEdgeCombo);
-async function loadEdgeCandidates(){
-  const q=$('edgeSearch').value.trim();const scope=edgeDialogMode==='incoming'?'mine':'all';
-  const d=await api('/api/search?scope='+scope+'&limit=80&q='+encodeURIComponent(q));const sel=$('edgeTarget');sel.innerHTML='';
-  const items=(d.results||[]).filter(x=>x.file!==current);
-  for(const x of items){const o=document.createElement('option');o.value=x.file;o.textContent=(x.title||x.file)+' · @'+(x.author?.username||'');sel.appendChild(o)}
-  // Reset the key window and preselect the top hit (Enter in the search box
-  // adds it; the windowed number/letter keys pick another).
-  edgeResetWindow();
-  if(items.length)sel.selectedIndex=0;
-  $('edgeSubmit').disabled=!items.length&&!$('edgePaste').value.trim();
+// ---- Note search palette: pop up anywhere, keyboard-only, jump to a note.
+//      Also reused as the edge dialog's "pick a target note" step.
+let notePickState={items:[],idx:0,onPick:null,timer:null};
+function paintNotePick(){
+  const rows=$('notePickResults').children;
+  for(let i=0;i<rows.length;i++)rows[i].style.background=(i===notePickState.idx)?'#e9e9e9':'transparent';
+  const r=rows[notePickState.idx];r&&r.scrollIntoView&&r.scrollIntoView({block:'nearest'});
 }
-async function openEdgeDialog(direction,preferNew=false){if(direction==='outgoing'&&currentData?.is_index){status('IndexにはParentを追加しません');return}
+function renderNotePickResults(){
+  const box=$('notePickResults');if(!box)return;box.innerHTML='';
+  if(!notePickState.items.length){box.innerHTML='<div class="profileHint" style="padding:12px">該当なし</div>';return}
+  notePickState.items.forEach((it,i)=>{
+    const row=document.createElement('button');row.type='button';
+    row.style.cssText='display:block;text-align:left;width:100%;border:0;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer;background:'+(i===notePickState.idx?'#e9e9e9':'transparent');
+    row.innerHTML='<b>'+escapeHtml(it.title||it.file)+'</b> <span style="color:var(--muted);font-size:11px">@'+escapeHtml((it.author&&it.author.username)||'')+'</span>';
+    row.onmouseenter=()=>{notePickState.idx=i;paintNotePick()};
+    row.onclick=()=>notePickChoose(i);
+    box.appendChild(row);
+  });
+  paintNotePick();
+}
+async function loadNotePick(){
+  const q=$('notePickInput').value.trim();
+  try{
+    const d=await api('/api/search?scope=all&limit=40&q='+encodeURIComponent(q));
+    notePickState.items=d.results||[];notePickState.idx=0;renderNotePickResults();
+  }catch(e){status(e.message)}
+}
+function notePickMove(delta){
+  if(!notePickState.items.length)return;
+  notePickState.idx=Math.max(0,Math.min(notePickState.items.length-1,notePickState.idx+delta));
+  paintNotePick();
+}
+function notePickChoose(i){
+  const it=notePickState.items[(i==null?notePickState.idx:i)];if(!it)return;
+  const cb=notePickState.onPick;$('notePickDialog').close();
+  if(cb)cb(it.file,it);else{showNetwork();openFile(it.file).catch(e=>status(e.message))}
+}
+function openNotePicker(onPick){
+  if($('notePickDialog').open)return;
+  notePickState={items:[],idx:0,onPick:onPick||null,timer:null};
+  $('notePickInput').value='';$('notePickResults').innerHTML='';
+  $('notePickDialog').showModal();
+  setTimeout(()=>$('notePickInput').focus(),0);
+  loadNotePick().catch(e=>status(e.message));
+}
+$('notePickInput').addEventListener('input',()=>{
+  if(notePickState.timer)clearTimeout(notePickState.timer);
+  notePickState.timer=setTimeout(()=>loadNotePick().catch(e=>status(e.message)),160);
+});
+$('notePickDialog').addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'||(e.ctrlKey&&(e.key==='n'||e.key==='N'))){e.preventDefault();notePickMove(1)}
+  else if(e.key==='ArrowUp'||(e.ctrlKey&&(e.key==='p'||e.key==='P'))){e.preventDefault();notePickMove(-1)}
+  else if(e.key==='Enter'){e.preventDefault();notePickChoose()}
+});
+$('notePickDialog').addEventListener('cancel',()=>{});
+$('notePickDialog').addEventListener('close',()=>{const d=activeVimDialog();if(d)try{d.focus()}catch(_){}});
+
+// ---- always-available keyboard-shortcut reference ("?" key or the ? button) ----
+const SHORTCUTS_HTML=[
+  '<b>全体</b>',
+  'Ctrl+E : 整理ビュー ↔ ソース 切替',
+  'Ctrl+K : ノートを検索してジャンプ（どこからでも）',
+  '? : このヘルプ',
+  '',
+  '<b>整理ビュー</b>',
+  'Tab / Shift+Tab : リンク移動 ／ Enter : 開く',
+  '↑ / ↓ : セクション移動 ／ Backspace : 戻る',
+  't → 数字 : 属性を設定',
+  'p : Parent関係を追加 ／ c : Child関係を追加',
+  'P : Parentゾーンを編集 ／ C : Childゾーンを編集',
+  '\\f : ノート検索',
+  '',
+  '<b>編集モード（P / C のあと）</b>',
+  '数字 : 行を選択 ／ a : 全選択 ／ s : 解除',
+  'r → 数字 : 選択行の関係を変更 ／ d : 削除',
+  'e : 展開 ／ o : 他人の関係 ／ Esc : 終了',
+  '',
+  '<b>ポップアップ（作成 / エッジ / 検索）</b>',
+  'i : 入力 ／ Esc : ノーマル ／ q : 閉じる',
+  't : 属性一覧 ／ r : 関係一覧（英数字キーで選択）',
+  's : ノート検索 ／ n : 新規ノート ／ p : 貼付',
+  'Enter : 確定',
+].join('<br>');
+function toggleShortcuts(){
+  const d=$('shortcutsDialog');
+  if(d.open){d.close();return}
+  $('shortcutsBody').innerHTML=SHORTCUTS_HTML;
+  d.showModal();
+}
+if($('helpBtn'))$('helpBtn').onclick=toggleShortcuts;
+window.addEventListener('keydown',e=>{
+  if(e.key!=='?'||e.ctrlKey||e.metaKey||e.altKey)return;
+  const a=document.activeElement,tag=(a&&a.tagName)||'';
+  if(tag==='INPUT'||tag==='TEXTAREA'||(a&&a.isContentEditable)||(a&&a.closest&&a.closest('.CodeMirror')))return;
+  const openDlg=document.querySelector('dialog[open]');
+  if(openDlg&&openDlg.id!=='shortcutsDialog')return;
+  e.preventDefault();toggleShortcuts();
+},true);
+
+// ---- edge dialog: relation + a target chosen through the search palette ----
+let edgeTargetFile='';
+function setEdgeTarget(file,item){
+  edgeTargetFile=file||'';
+  $('edgeTargetLabel').textContent=edgeTargetFile?((item&&(item.title||item.file))||edgeTargetFile):'未選択';
+}
+$('edgePickBtn').onclick=()=>openNotePicker(setEdgeTarget);
+async function openEdgeDialog(direction,preferNew=false){
+  if(direction==='outgoing'&&currentData?.is_index){status('IndexにはParentを追加しません');return}
   if(isGuest()){showAuth(direction==='incoming'?'このノートにつながる自分のノートを書くにはログインまたは新規登録してください':'関係を追加するにはログインまたは新規登録してください',()=>openEdgeDialog(direction,preferNew));return}
   edgeDialogMode=direction;$('edgeDialogTitle').textContent=direction==='outgoing'?'Parentとの関係を追加':'Childとの関係を追加';
   $('edgeDialogHint').textContent=direction==='outgoing'?(currentData?.can_edit?'このノート自身のParent関係として追加します。':'このノートの所有者ではないため、あなたが追加したParentとして別管理され、本人のParentより下に表示されます。'):'自分のノート側に、現在のノートとの関係を追加します。現在のノート自体は編集しません。';
-  $('edgeSearchLabel').firstChild.textContent=direction==='outgoing'?'リンク先を検索':'自分のリンク元ノートを検索';$('edgeSearch').value='';$('edgePaste').value='';$('edgeNewTitle').value='';$('edgeCustomRelation').value='';edgeRelationVal='関連';updateEdgeCombo();$('edgeTarget').innerHTML='<option>読み込み中...</option>';$('edgeDialog').showModal();await loadEdgeCandidates();setTimeout(()=>dlgSetMode('insert',preferNew?$('edgeNewTitle'):$('edgeSearch')),0);
+  $('edgeCustomRelation').value='';$('edgeNewTitle').value='';$('edgePaste').value='';
+  edgeRelationVal='関連';updateEdgeCombo();
+  setEdgeTarget('');
+  $('edgeNewWrap').style.display='none';$('edgePasteWrap').style.display='none';
+  $('edgeDialog').showModal();
+  if(preferNew){$('edgeNewWrap').style.display='grid';setTimeout(()=>dlgSetMode('insert',$('edgeNewTitle')),0)}
+  else{dlgSetMode('normal');setTimeout(()=>openNotePicker(setEdgeTarget),40)}
 }
-$('edgeSearch').addEventListener('input',()=>{if(edgeSearchTimer)clearTimeout(edgeSearchTimer);edgeSearchTimer=setTimeout(()=>loadEdgeCandidates().catch(e=>status(e.message)),180)});
-// Keyboard: ArrowDown from the search box drops into the candidate list;
-// Enter in the list adds the highlighted note; ArrowUp at the top returns.
-$('edgeSearch').addEventListener('keydown',e=>{
-  if(e.key==='ArrowDown'){const t=$('edgeTarget');if(t.options.length){e.preventDefault();if(t.selectedIndex<0)t.selectedIndex=0;t.focus()}}
-});
-$('edgeTarget').addEventListener('keydown',e=>{
-  if(e.key==='Enter'){e.preventDefault();if($('edgeTarget').value)$('edgeForm').requestSubmit?.($('edgeSubmit'))}
-  else if(e.key==='ArrowUp'&&$('edgeTarget').selectedIndex<=0){e.preventDefault();$('edgeSearch').focus()}
-});
-$('edgeTarget').addEventListener('dblclick',()=>{if($('edgeTarget').value)$('edgeForm').requestSubmit?.($('edgeSubmit'))});
-$('edgeTarget').addEventListener('change',()=>{$('edgeSubmit').disabled=!$('edgeTarget').value&&!$('edgePaste').value.trim()});
-$('edgePaste').addEventListener('input',()=>{$('edgeSubmit').disabled=!$('edgePaste').value.trim()&&!$('edgeTarget').value});
 $('edgeNewBtn').onclick=async()=>{
   const relation=currentEdgeRelation(),title=$('edgeNewTitle').value.trim();
-  if(!relation){status('関係名を入力してください');return}
   if(!title){status('新しいノートのタイトルを入力してください');$('edgeNewTitle').focus();return}
   try{
     await flushAutosave();
@@ -2289,7 +2388,18 @@ $('edgeNewBtn').onclick=async()=>{
     $('edgeDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status(edgeDialogMode==='incoming'?'Childノートを作成しました':'Parentノートを作成しました');
   }catch(err){status(err.message)}
 };
-$('edgeForm').addEventListener('submit',async e=>{e.preventDefault();const relation=currentEdgeRelation();if(!relation){status('関係名を入力してください');return}const file=$('edgeTarget').value||'';const reference=$('edgePaste').value.trim();if(!file&&!reference){status('ノートを選択するかリンクを貼り付けてください');return}try{await flushAutosave();const d=await api('/api/edge-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({direction:edgeDialogMode,current,relation,file,reference})});currentData=d;setEditorsFromRaw(d.content);dirty=false;renderEditEdges();$('edgeDialog').close();await refreshFiles();queueGraph();if(mode==='organize')renderOrganize();status('エッジを追加しました')}catch(err){status(err.message)}});
+$('edgeForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if($('edgeNewWrap').style.display!=='none'&&$('edgeNewTitle').value.trim()){$('edgeNewBtn').click();return}
+  const relation=currentEdgeRelation();
+  const file=edgeTargetFile||'';const reference=$('edgePaste').value.trim();
+  if(!file&&!reference){status('ノートを検索して選ぶか、リンクを貼り付けてください');return}
+  try{
+    await flushAutosave();
+    const d=await api('/api/edge-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({direction:edgeDialogMode,current,relation,file,reference})});
+    currentData=d;setEditorsFromRaw(d.content);dirty=false;renderEditEdges();$('edgeDialog').close();await refreshFiles();queueGraph();if(mode==='organize')renderOrganize();status('エッジを追加しました');
+  }catch(err){status(err.message)}
+});
 
 function refocusVimAfterDialog(){
   if(mode!=='source'||!isSourceNormal())return;
@@ -2315,16 +2425,12 @@ function dlgPanelEl(){const d=activeVimDialog();return d&&d.querySelector('.dlgP
 function dlgClosePicker(){dlgPicker=null;const el=dlgPanelEl();if(el){el.style.display='none';el.innerHTML=''}}
 function dlgRenderPicker(){
   const el=dlgPanelEl();if(!el||!dlgPicker)return;
-  el.innerHTML='';
-  el.style.cssText='display:block;margin:0 0 8px;padding:5px;border:1px solid var(--border);border-radius:8px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16);max-height:min(46vh,300px);overflow:auto';
+  el.innerHTML='';el.style.display='block';
   if(dlgPicker.title){const h=document.createElement('div');h.textContent=dlgPicker.title;h.style.cssText='font-size:10px;font-weight:800;color:var(--muted);padding:2px 4px 5px';el.appendChild(h)}
   dlgPicker.entries.forEach((en,i)=>{
     const sel=en.value===dlgPicker.current;
-    const row=document.createElement('button');row.type='button';
-    row.style.cssText='display:flex;gap:8px;align-items:center;text-align:left;padding:5px 7px;border:0;border-radius:6px;font-size:13px;cursor:pointer;width:100%;background:'+(sel?'#e9e9e9':'transparent');
-    row.innerHTML='<b style="min-width:1.5em;text-align:center;border:1px solid var(--border);border-radius:4px;font-size:10px;padding:0 3px">'+dlgKeyChar(i)+'</b><span>'+escapeHtml(en.label)+'</span>';
-    row.onmouseenter=()=>{if(!sel)row.style.background='#f0f0f0'};
-    row.onmouseleave=()=>{if(!sel)row.style.background='transparent'};
+    const row=document.createElement('button');row.type='button';if(sel)row.className='sel';
+    row.innerHTML='<b>'+dlgKeyChar(i)+'</b><span>'+escapeHtml(en.label)+'</span>';
     row.onclick=()=>dlgPickIndex(i);
     el.appendChild(row);
     if(sel)setTimeout(()=>{try{row.scrollIntoView({block:'nearest'})}catch(_){}},0);
@@ -2361,39 +2467,13 @@ function dlgConfirm(){
     $('edgeForm').requestSubmit($('edgeSubmit'));
   }
 }
-// ---- edge-dialog candidate window: keys re-map as the window is paged ----
-const EDGE_RESERVED=new Set(['i','q','r','s','p','f','b','n']);
-const EDGE_CAND_KEYS=(function(){const a=['1','2','3','4','5','6','7','8','9','0'];for(let c=97;c<=122;c++){const ch=String.fromCharCode(c);if(!EDGE_RESERVED.has(ch))a.push(ch)}return a})();
-let edgeWinStart=0;
-function edgeRelabelCandidates(){
-  const t=$('edgeTarget');
-  for(let i=0;i<t.options.length;i++){
-    const o=t.options[i];
-    if(o.dataset.base===undefined)o.dataset.base=o.textContent.replace(/^[0-9a-z]\.\s/,'');
-    const k=i-edgeWinStart;
-    o.textContent=(k>=0&&k<EDGE_CAND_KEYS.length)?EDGE_CAND_KEYS[k]+'. '+o.dataset.base:'   '+o.dataset.base;
-  }
-}
-function edgeResetWindow(){edgeWinStart=0;edgeRelabelCandidates()}
-function edgePageWindow(dir){
-  const n=$('edgeTarget').options.length;if(!n)return;
-  let s=edgeWinStart+dir*EDGE_CAND_KEYS.length;
-  if(s<0)s=0;if(s>n-1)s=Math.max(0,edgeWinStart);
-  edgeWinStart=s;edgeRelabelCandidates();
-  const t=$('edgeTarget');t.selectedIndex=s;t.options[s]&&t.options[s].scrollIntoView({block:'nearest'});t.dispatchEvent(new Event('change'));
-}
-function edgeSelectInWindow(k){
-  const t=$('edgeTarget'),idx=edgeWinStart+k;
-  if(idx<0||idx>=t.options.length)return;
-  t.selectedIndex=idx;t.options[idx].scrollIntoView({block:'nearest'});t.dispatchEvent(new Event('change'));
-}
-function edgeMoveSel(step){
-  const t=$('edgeTarget');if(!t.options.length)return;
-  let i=Math.max(0,Math.min(t.options.length-1,(t.selectedIndex<0?0:t.selectedIndex)+step));
-  t.selectedIndex=i;t.options[i].scrollIntoView({block:'nearest'});t.dispatchEvent(new Event('change'));
-  const W=EDGE_CAND_KEYS.length;
-  if(i<edgeWinStart||i>=edgeWinStart+W){edgeWinStart=Math.floor(i/W)*W;edgeRelabelCandidates()}
-}
+// Ctrl+K anywhere -> the note search palette (mouse-free to open).
+window.addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey)||e.altKey||e.shiftKey||String(e.key).toLowerCase()!=='k')return;
+  if($('notePickDialog').open)return;
+  e.preventDefault();e.stopPropagation();
+  openNotePicker();
+},true);
 window.addEventListener('keydown',e=>{
   const dlg=activeVimDialog();if(!dlg)return;
   if(e.ctrlKey||e.metaKey||e.altKey||e.key==='Tab')return;
@@ -2422,15 +2502,9 @@ window.addEventListener('keydown',e=>{
   if(e.key==='r'){e.preventDefault();(dlg.id==='newDialog'?$('newRelationBtn'):$('edgeRelationBtn')).click();return}
   if(e.key==='t'&&dlg.id==='newDialog'){e.preventDefault();$('newNodeTypeBtn').click();return}
   if(dlg.id==='edgeDialog'){
-    if(e.key==='s'||e.key==='/'){e.preventDefault();dlgSetMode('insert',$('edgeSearch'));return}
-    if(e.key==='p'){e.preventDefault();dlgSetMode('insert',$('edgePaste'));return}
-    if(e.key==='N'){e.preventDefault();dlgSetMode('insert',$('edgeNewTitle'));return}
-    if(e.key==='f'||e.key==='.'||e.key===']'){e.preventDefault();edgePageWindow(1);return}
-    if(e.key==='b'||e.key===','||e.key==='['){e.preventDefault();edgePageWindow(-1);return}
-    if(e.key==='ArrowDown'){e.preventDefault();edgeMoveSel(1);return}
-    if(e.key==='ArrowUp'){e.preventDefault();edgeMoveSel(-1);return}
-    const ci=EDGE_CAND_KEYS.indexOf(e.key);
-    if(ci>=0){e.preventDefault();edgeSelectInWindow(ci);return}
+    if(e.key==='s'||e.key==='/'){e.preventDefault();openNotePicker(setEdgeTarget);return}
+    if(e.key==='n'){e.preventDefault();$('edgeNewWrap').style.display='grid';dlgSetMode('insert',$('edgeNewTitle'));return}
+    if(e.key==='p'){e.preventDefault();$('edgePasteWrap').style.display='grid';dlgSetMode('insert',$('edgePaste'));return}
   }
 },true);
 function dlgCancelDialog(dlg){dlgClosePicker();dlgMode='normal';try{dlg.close()}catch(_){}}
@@ -2827,7 +2901,7 @@ $('graphRelationLabels').checked=graphShowRelationLabels;$('graphRelationLabelsV
 function updateGraphControlsVisibility(){const box=$('graphControls'),btn=$('graphControlsToggle');if(!box||!btn)return;box.classList.toggle('collapsed',graphControlsCollapsed);btn.textContent=graphControlsCollapsed?'パラメータを表示':'隠す';btn.setAttribute('aria-expanded',graphControlsCollapsed?'false':'true')}
 $('graphControlsToggle').onclick=()=>{graphControlsCollapsed=!graphControlsCollapsed;localStorage.setItem('nnGraphControlsCollapsed',graphControlsCollapsed?'1':'0');updateGraphControlsVisibility();setTimeout(()=>queueGraph(80),0)};updateGraphControlsVisibility();
 new ResizeObserver(()=>queueGraph(120)).observe($('graphWrap'));
-$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();if(!title){dlgSetMode('insert',$('newTitle'));status('タイトルを入力してください');return}const node_type=newNodeTypeVal==='__custom__'?$('newNodeTypeCustom').value.trim():newNodeTypeVal;let relation=newRelationVal==='__custom__'?$('customRelation').value.trim():newRelationVal;if(!relation)relation='指定しない';if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
+$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();if(!title){dlgSetMode('insert',$('newTitle'));status('タイトルを入力してください');return}const node_type=newNodeTypeVal==='__custom__'?$('newNodeTypeCustom').value.trim():newNodeTypeVal;let relation=newRelationVal==='__custom__'?$('customRelation').value.trim():newRelationVal;if(!relation)relation='選択しない';if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
 window.addEventListener('beforeunload',()=>{if(!isGuest()&&(dirty||relationSyncPending)){const blob=new Blob([JSON.stringify({name:current,content:editorText(),voter:voterId,commit_relations:true,client_save_session:saveClientSession,client_seq:editRevision})],{type:'application/json'});navigator.sendBeacon('/api/file',blob)}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flushAutosave().catch(()=>{})});
 boot().catch(e=>{status(e.message,{kind:'error'});if(!runtimeLocalMode)showAuth(e.message)});
@@ -3194,7 +3268,7 @@ def normalized_node_type(value: str) -> str:
     hand-edited value can never break Markdown parsing.
     """
     v = str(value or "").replace("\n", " ").strip().strip('"\'')
-    if v in ("", "指定なし", "指定しない", "なし", "none", "unspecified"):
+    if v in ("", "指定なし", "指定しない", "選択しない", "なし", "none", "unspecified"):
         return ""
     return v[:60]
 

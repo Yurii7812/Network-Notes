@@ -155,7 +155,18 @@ class NodeTypeSpaContractTests(unittest.TestCase):
         self.assertIn('data-vim-dialog', src)
         self.assertIn("function activeVimDialog()", src)
         self.assertIn("function dlgOpenPicker(cfg)", src)
-        self.assertIn("const EDGE_CAND_KEYS=", src)
+        # "選択しない" is the second-to-last choice, before free input
+        self.assertIn("{value:'',label:'選択しない'},{value:'__custom__'", src)
+        # keyboard-only note search palette, opened with Ctrl+K, reused by \\p /\\c
+        self.assertIn("function openNotePicker(onPick)", src)
+        self.assertIn('id="notePickDialog"', src)
+        self.assertIn("String(e.key).toLowerCase()!=='k'", src)
+        # the vim-clipboard flag is declared before it is first used
+        self.assertLess(src.index("let vimSystemClipboardReady="),
+                        src.index("setupVimSystemClipboard()"))
+        # uploaded-file gallery + delete
+        self.assertIn('u.path == "/api/attachments"', src)
+        self.assertIn('u.path == "/api/attachment-delete"', src)
 
 
 if __name__ == "__main__":
