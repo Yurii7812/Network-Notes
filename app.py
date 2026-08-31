@@ -98,6 +98,10 @@ HTML = r'''<!doctype html>
 body{margin:0;height:100vh;overflow:hidden;background:#fff;color:#000}
 header{height:48px;display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border);background:#fff;min-width:0;position:relative;z-index:3000;overflow:visible}
 #trailBar{display:none!important}
+#keymapBar{display:none;flex-wrap:wrap;align-items:center;gap:3px 12px;padding:3px 10px;font-size:10px;line-height:1.55;color:var(--muted);border-bottom:1px solid var(--border);background:#fafafa;overflow:hidden}
+#keymapBar span{white-space:nowrap}
+#keymapBar kbd{font:700 9.5px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:CanvasText;color:Canvas;border-radius:3px;padding:2px 4px;margin-right:4px}
+@media(max-width:700px){#keymapBar{display:none!important}}
 #trailLabel{font-size:11px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
 #trail{display:flex;align-items:center;gap:5px;min-width:0;overflow-x:auto;scrollbar-width:thin;white-space:nowrap;flex:1}
 #trailReset{flex:0 0 auto;padding:4px 8px;font-size:11px}
@@ -400,20 +404,18 @@ header{
       <div id="fileTitle">Index.md</div>
       <button id="viewModeToggle" class="viewModeToggle" type="button" aria-label="整理ビューとソースを切替" title="\o または Ctrl+E で切替">整理ビュー</button>
       <button id="vimIndicator" class="vimIndicator insert" type="button" title="Esc: NORMAL / i: INSERT">VIM INSERT</button>
-      <button id="newRootBtn" class="guestWriteBtn" type="button" title="Vim: \n"><kbd>\n</kbd>作成</button>
-      <span class="kbdHint"><kbd>\p</kbd>親 &nbsp;<kbd>\c</kbd>子</span>
-      <button id="contextActionBtn" title="Vim: \e — Childリンクをカテゴリーへ移動/追加"><kbd>\e</kbd>分類</button>
-      <button id="deleteCurrentBtn" type="button" style="display:none;border-color:#b91c1c" title="Vim: \d"><kbd>\d</kbd>削除</button>
-      <button id="copyLinkBtn" type="button" title="Vim: \y"><kbd>\y</kbd>リンク</button>
-      <span class="kbdHint"><kbd>\f</kbd>検索 &nbsp;<kbd>?</kbd>ヘルプ</span>
+      <button id="newRootBtn" class="guestWriteBtn" type="button" title="Vim: \n">作成</button>
+      <button id="contextActionBtn" title="Vim: \e — Childリンクをカテゴリーへ移動/追加">分類</button>
+      <button id="deleteCurrentBtn" type="button" style="display:none;border-color:#b91c1c" title="Vim: \d">削除</button>
+      <button id="copyLinkBtn" type="button" title="Vim: \y">リンク</button>
       <label id="uploadToggleWrap" class="uploadToggle" style="display:none"><input id="uploadToggle" type="checkbox" checked> Webへ</label>
       <button id="publicVersionBtn" type="button" style="display:none">公開版</button>
       <input id="imageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" hidden />
       <input id="attachmentInput" type="file" accept="image/*,application/pdf,text/plain,text/markdown,.md,.txt,.pdf" hidden />
-      <button id="attachmentBtn" type="button" title="Vim: \a"><kbd>\a</kbd>添付</button>
-      <button id="taskBtn" type="button" title="チェックボックス（Vim: \t / 切替: \x）"><kbd>\t</kbd>☑</button>
-      <button id="tableBtn" type="button" title="Markdownテーブル（Vim: \T）"><kbd>\T</kbd>表</button>
-      <button id="helpBtn" type="button" title="キーボードショートカット (?)"><kbd>?</kbd>ヘルプ</button>
+      <button id="attachmentBtn" type="button" title="Vim: \a">添付</button>
+      <button id="taskBtn" type="button" title="チェックボックス（Vim: \t / 切替: \x）">☑</button>
+      <button id="tableBtn" type="button" title="Markdownテーブル（Vim: \T）">表</button>
+      <button id="helpBtn" type="button" title="キーボードショートカット (?)">?</button>
       <button id="shareCommunityBtn" type="button">コミュニティに共有</button>
     </div>
   </div>
@@ -435,6 +437,7 @@ header{
   </div>
 </header><div id="mobileOverlay" class="mobileOverlay"></div>
 <div id="trailBar"><span id="trailLabel">Outgoing</span><div id="trail"></div><button id="trailReset" type="button">リセット</button></div>
+<div id="keymapBar"></div>
 <div id="layout">
 <aside id="sidebar" aria-hidden="true"><select id="nodeSort"><option value="newest">新しい順</option><option value="oldest">古い順</option></select><button id="nodeSelectBtn" type="button">選択</button><button id="nodeDeleteBtn" type="button" disabled>削除</button><div id="files"></div></aside>
 <main id="editorPane">
@@ -745,6 +748,25 @@ function updateVimUi(){
     w.classList.toggle('nnCaretInsert',label==='INSERT');
   }catch(_){}
   setTimeout(syncNormalCaret,0);
+  renderKeymapBar();
+}
+// One-line, wrap-to-fit hotkey strip under the header (never scrolls off).
+function renderKeymapBar(){
+  const el=$('keymapBar');if(!el)return;
+  const show=!!currentData&&activeSocialView==='network';
+  el.style.display=show?'flex':'none';
+  if(!show){el.innerHTML='';return}
+  const K=(k,l)=>'<span><kbd>'+escapeHtml(k)+'</kbd>'+escapeHtml(l)+'</span>';
+  const editing=mode==='organize'&&(edgeEditMode.outgoing||edgeEditMode.incoming);
+  let items;
+  if(editing){
+    items=[K('数字','行選択'),K('a','全選択'),K('s','解除'),K('r→数字','関係を一括'),K('t→数字','属性を一括'),K('d','削除'),K('e','展開'),K('o','他人'),K('Esc','終了')];
+  }else if(mode==='organize'){
+    items=[K('\\o','ソース切替'),K('t→数字','属性変更'),K('p','親追加'),K('c','子追加'),K('P','親編集'),K('C','子編集'),K('Tab','リンク移動'),K('Ctrl+K','検索'),K('?','ヘルプ')];
+  }else{
+    items=[K('\\o','整理切替'),K('i','入力'),K('Esc','NORMAL'),K('\\n','作成'),K('\\p','親'),K('\\c','子'),K('\\e','分類'),K('\\y','リンク'),K('\\a','添付'),K('\\t','☑'),K('\\T','表'),K('\\f','検索'),K('nt/nT','タイトル'),K('?','ヘルプ')];
+  }
+  el.innerHTML=items.join('');
 }
 // The NORMAL/VISUAL block caret must cover a whole cell, including full-width
 // (Japanese) glyphs. CodeMirror only positions the caret; we size it here to
@@ -1295,7 +1317,7 @@ function relIs(x,name){
 function outgoingOf(data,relation){return (data?.outgoing||[]).filter(e=>relIs(e.relation,relation))}
 function updateContextAction(){
   const b=$('contextActionBtn');if(!b)return;
-  b.innerHTML='<kbd>\\e</kbd>分類';b.title='Vim: \\e — Childリンクをカテゴリーへ移動/追加';
+  b.textContent='分類';b.title='Vim: \\e — Childリンクをカテゴリーへ移動/追加';
   b.style.display=currentData?'inline-block':'none';
   const del=$('deleteCurrentBtn');if(del)del.style.display=(currentData?.can_edit&&!currentData?.is_index)?'inline-block':'none';
 }
@@ -1613,6 +1635,7 @@ function renderOrganize(){
   renderEdgeZone(root,'incoming');
   root.querySelectorAll('[data-file]').forEach(a=>a.onclick=e=>{e.preventDefault();organizeLinkIndex=[...root.querySelectorAll('a[data-file]')].indexOf(a);openFile(a.dataset.file)});
   organizeLinkIndex=-1;organizeSectionIndex=-1;
+  renderKeymapBar();
 }
 function organizeLinks(){return [...$('organizeView').querySelectorAll('a[data-file]')]}
 function organizeH2Sections(){return [...$('organizeView').querySelectorAll('section.previewSection[data-heading-level="2"]')]}
@@ -1931,7 +1954,7 @@ function renderTopicWidgets(){
 function renderConnections(d){}
 function updateViewModeToggle(){
   const b=$('viewModeToggle');if(!b)return;
-  b.innerHTML='<kbd>\\o</kbd>'+(mode==='source'?'整理へ':'ソースへ');
+  b.textContent=(mode==='source'?'ソース':'整理ビュー');
   b.setAttribute('aria-pressed',mode==='source'?'true':'false');
   b.title='\\o または Ctrl+E で切替（NORMALで開く）';
 }
@@ -2537,7 +2560,7 @@ const SHORTCUTS_HTML=[
   '',
   '<b>編集モード（P / C のあと）</b>',
   '数字 : 行を選択 ／ a : 全選択 ／ s : 解除',
-  'r → 数字 : 選択行の関係を変更 ／ d : 削除',
+  'r → 数字 : 関係を一括変更 ／ t → 数字 : 属性を一括変更 ／ d : 削除',
   'e : 展開 ／ o : 他人の関係 ／ Esc : 終了',
   '',
   '<b>ポップアップ（作成 / エッジ）</b>',
@@ -2768,10 +2791,10 @@ function closeNavMenu(){const menu=$('mainNavMenu'),btn=$('mainNavBtn');if(menu)
 function stopSocialPoll(){if(socialPollTimer){clearInterval(socialPollTimer);socialPollTimer=null}}
 function showNetwork(){
   stopSocialPoll();activeSocialView='network';setTopNav('');$('socialView').style.display='none';$('authorBar').style.display='flex';$('docBar').style.display='flex';$('layout').style.display='grid';
-  queueGraph(80);if(mode==='source')setTimeout(()=>editor.refresh(),0);
+  queueGraph(80);if(mode==='source')setTimeout(()=>editor.refresh(),0);renderKeymapBar();
 }
 async function showSocial(view){
-  stopSocialPoll();activeSocialView=view;setTopNav(view);$('authorBar').style.display='none';$('docBar').style.display='none';$('layout').style.display='none';$('socialView').style.display='block';
+  stopSocialPoll();activeSocialView=view;setTopNav(view);$('authorBar').style.display='none';$('docBar').style.display='none';$('layout').style.display='none';$('socialView').style.display='block';renderKeymapBar();
   if(view==='home'){if(!isGuest()&&profile?.id){await renderProfile(profile.id);return}else await renderHome();}
   else if(view==='latest'||view==='popular')await renderFeed(view);
   else if(view==='communities')await renderCommunities();
