@@ -393,7 +393,7 @@ header{
     <div id="authorBar"><span id="noteAuthorAvatar"></span><div class="authorText"><span id="noteAuthorName" class="authorName"></span><span id="noteAuthorHandle" class="authorHandle"></span></div><div class="authorMeta"><button id="likeBtn" type="button">♡ 0</button><button id="reportNoteBtn" type="button" style="display:none">通報</button></div></div>
     <div id="docBar">
       <div id="fileTitle">Index.md</div>
-      <button id="viewModeToggle" class="viewModeToggle" type="button" aria-label="整理ビューとソースを切替" title="i / \o / Ctrl+E で切替">整理ビュー</button>
+      <button id="viewModeToggle" class="viewModeToggle" type="button" aria-label="整理ビューとソースを切替" title="\o または Ctrl+E で切替">整理ビュー</button>
       <button id="vimIndicator" class="vimIndicator insert" type="button" title="Esc: NORMAL / i: INSERT">VIM INSERT</button>
       <button id="newRootBtn" class="guestWriteBtn" type="button" title="Vim: \n"><kbd>\n</kbd>作成</button>
       <span class="kbdHint"><kbd>\p</kbd>親 &nbsp;<kbd>\c</kbd>子</span>
@@ -592,6 +592,26 @@ function sourceEnterInsert(){
     const v=editor.state&&editor.state.vim;
     if(v&&!v.insertMode&&window.CodeMirror&&CodeMirror.Vim)CodeMirror.Vim.handleKey(editor,'i');
   }catch(_){}
+  reconcileSourceInput();
+}
+// Failsafe for the "sometimes can't type anything" bug: the Vim addon can leave
+// the editor with disableInput=true even though it is in INSERT (mode change
+// missed during a dialog close / mode switch / dropped compositionend). Keep
+// CodeMirror's input-enabled flag in sync with the actual vim mode.
+function reconcileSourceInput(){
+  try{
+    if(mode!=='source')return;
+    if(typeof anyImeComposing==='function'&&anyImeComposing())return;
+    const v=editor.state&&editor.state.vim;if(!v)return;
+    const wantText=!!v.insertMode;
+    const disabled=!!editor.getOption('disableInput');
+    if(wantText&&disabled){
+      editor.setOption('disableInput',false);
+      try{editor.display.input.reset(true)}catch(_){}
+    }else if(!wantText&&!v.visualMode&&!disabled){
+      editor.setOption('disableInput',true);
+    }
+  }catch(_){}
 }
 function requestedNoteFromUrl(){try{return new URL(window.location.href).searchParams.get('note')||''}catch(_){return ''}}
 function syncNoteUrl(name,replace=false){
@@ -660,6 +680,12 @@ function waitForImeIdle(timeout=2500){
 }
 function bindImeTracking(cm){
   const input=cm.getInputField&&cm.getInputField();if(!input)return;
+  if(cm===editor)input.addEventListener('keydown',e=>{
+    // Self-heal a swallowed keystroke: if we're meant to be typing but the
+    // input was left disabled, re-enable it (next keystroke lands normally).
+    if(e.ctrlKey||e.metaKey||e.altKey)return;
+    if(mode==='source'&&editor.state&&editor.state.vim&&editor.state.vim.insertMode&&editor.getOption('disableInput'))reconcileSourceInput();
+  },true);
   input.addEventListener('compositionstart',()=>{
     imeComposing.add(cm);
     bumpImeWatchdog(cm);
@@ -787,8 +813,19 @@ if(window.CodeMirror&&CodeMirror.Vim)setupVimSystemClipboard();
 // with the addon's own mode state instead of a parallel variable.
 editor.on('vim-mode-change',()=>{
   updateVimUi();
+  reconcileSourceInput();
   if(mode==='source'&&isSourceNormal())refreshVimNormalLinks();else clearVimNormalLinkMarks();
   if(isSourceNormal()&&relationSyncPending&&mode==='source')flushAutosave(true).catch(console.error);
+});
+editor.on('focus',reconcileSourceInput);
+editor.on('mousedown',()=>{
+  // A click on the editor is the user's manual "let me type" gesture; make it
+  // reliably recover a stuck input (this is what the double-click workaround did).
+  setTimeout(()=>{
+    reconcileSourceInput();
+    try{const inp=editor.getInputField&&editor.getInputField();
+        if(inp&&mode==='source'&&!isSourceNormal())inp.focus({preventScroll:true});}catch(_){}
+  },0);
 });
 const bodyEditor=CodeMirror.fromTextArea($('bodySource'),{
   mode:{name:'markdown',highlightFormatting:true},
@@ -1811,9 +1848,9 @@ function renderTopicWidgets(){
 function renderConnections(d){}
 function updateViewModeToggle(){
   const b=$('viewModeToggle');if(!b)return;
-  b.innerHTML=mode==='source'?'<kbd>\\o</kbd>整理へ':'<kbd>i</kbd>編集へ';
+  b.innerHTML='<kbd>\\o</kbd>'+(mode==='source'?'整理へ':'ソースへ');
   b.setAttribute('aria-pressed',mode==='source'?'true':'false');
-  b.title='i / \\o / Ctrl+E で切替';
+  b.title='\\o または Ctrl+E で切替（NORMALで開く）';
 }
 function setModeVisibility(next){
   // v70 has only two user-facing modes: Organize and Source.
@@ -1836,7 +1873,7 @@ function focusSourceEditor(){
   // retry once if focus still did not land inside the editor.
   const tryFocus=()=>{
     if(mode!=='source')return;
-    try{editor.refresh();editor.focus();const inp=editor.getInputField&&editor.getInputField();if(inp)inp.focus({preventScroll:true});}catch(_){}
+    try{editor.refresh();editor.focus();reconcileSourceInput();const inp=editor.getInputField&&editor.getInputField();if(inp)inp.focus({preventScroll:true});}catch(_){}
   };
   tryFocus();
   requestAnimationFrame(()=>{
@@ -1889,7 +1926,8 @@ function switchMode(next,opts={}){
 }
 function toggleViewMode(opts={}){
   const next=mode==='source'?'organize':'source';
-  return switchMode(next,opts);
+  // Vim users want to land in NORMAL, not INSERT, when they flip the view.
+  return switchMode(next,{keepNormal:true,...(opts&&opts.keepNormal!==undefined?opts:{})});
 }
 
 function vimAllLinks(cm){
@@ -2000,7 +2038,7 @@ function registerVimLeaderCommands(){
     nnEdgesDialog:cm=>openOrganizeEdgesDialog(vimLinkFileAtCursor(cm)).catch(err=>status(err.message)),
     nnCopyLink:()=>copyCurrentNoteLink().catch(err=>status(err.message)),
     nnNoteFind:()=>openNotePicker(),
-    nnOrganize:()=>{switchMode('organize').catch(console.error)},
+    nnOrganize:()=>{toggleViewMode().catch(console.error)},
     nnAttach:()=>{if(currentData?.can_edit)$('attachmentBtn').click()},
     nnLinkNext:cm=>vimJumpLink(cm,1),
     nnLinkPrev:cm=>vimJumpLink(cm,-1),
@@ -2072,8 +2110,9 @@ window.addEventListener('keydown',e=>{
     if(e.key==='o'){e.preventDefault();showOtherEdgeNodes[editDir]=!showOtherEdgeNodes[editDir];localStorage.setItem(editDir==='outgoing'?'nnShowOtherOutgoing':'nnShowOtherIncoming',showOtherEdgeNodes[editDir]?'1':'0');renderOrganize();return}
     orgKeyPrefix='';
   }else if(plain){
-    // Vim-native: i / a / o start editing -> jump to Source (INSERT).
-    if(e.key==='i'||e.key==='a'||e.key==='o'){e.preventDefault();orgKeyPrefix='';switchMode('source').catch(console.error);return}
+    // Same key both ways: \o toggles Source <-> Organize (lands in NORMAL).
+    if(e.key==='\\'){e.preventDefault();orgKeyPrefix='\\';return}
+    if(orgKeyPrefix==='\\'){e.preventDefault();orgKeyPrefix='';if(e.key==='o')toggleViewMode().catch(console.error);return}
     if(e.key==='t'){e.preventDefault();orgKeyPrefix='t';status('属性の番号を押してください（1=論点 … 7=カテゴリー 8=ノード）');return}
     if(orgKeyPrefix==='t'&&/^[1-8]$/.test(e.key)){e.preventDefault();orgKeyPrefix='';const opt=NODE_TYPE_OPTIONS[Number(e.key)-1];if(opt&&currentData?.can_edit)saveNodeType(opt[0]);return}
     if(e.key==='p'){e.preventDefault();orgKeyPrefix='';openEdgeDialog('outgoing').catch(err=>status(err.message));return}
@@ -2330,9 +2369,9 @@ $('notePickDialog').addEventListener('close',()=>{const d=activeVimDialog();if(d
 // ---- always-available keyboard-shortcut reference ("?" key or the ? button) ----
 const SHORTCUTS_HTML=[
   '<b>ビュー切替（Vim風）</b>',
-  '整理ビューで  i / a / o  : ソースへ（編集開始）',
-  'ソース NORMAL で  \\o  : 整理ビューへ',
-  'Ctrl+E : 整理ビュー ↔ ソース（従来どおり）',
+  '\\o : 整理ビュー ↔ ソース（どちらからでも同じキー。NORMALで開く）',
+  'Ctrl+E : 同上',
+  'ソースで i : INSERT（入力開始）',
   'Ctrl+K : ノートを検索してジャンプ（どこからでも）',
   '? : このヘルプ',
   '',
