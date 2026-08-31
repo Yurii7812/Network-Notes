@@ -768,6 +768,7 @@ const editor=CodeMirror.fromTextArea($('source'),{
   }
 });
 if(window.CodeMirror&&CodeMirror.Vim)registerVimLeaderCommands();
+if(window.CodeMirror&&CodeMirror.Vim)setupVimSystemClipboard();
 // Keep the mode indicator and the NORMAL-mode link-label collapsing in sync
 // with the addon's own mode state instead of a parallel variable.
 editor.on('vim-mode-change',()=>{
@@ -1931,6 +1932,45 @@ function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLi
 // resolves its built-in <Space>→l before any multi-key sequence):
 //   \n new node, \p Parent edge, \c Child edge, \d delete note,
 //   \x toggle task, \t make task, \T table, \e edges dialog, \y copy link.
+let vimSystemClipboardReady=false,lastVimYank='';
+// Bridge CodeMirror-Vim's unnamed register to the OS clipboard:
+//  - y / d / c / x  also write to navigator.clipboard
+//  - p / P  paste whatever is currently on the clipboard
+function setupVimSystemClipboard(){
+  if(vimSystemClipboardReady||!window.CodeMirror||!CodeMirror.Vim||!CodeMirror.Vim.getRegisterController)return;
+  const rc=CodeMirror.Vim.getRegisterController();if(!rc)return;
+  vimSystemClipboardReady=true;
+  if(typeof rc.pushText==='function'){
+    const orig=rc.pushText.bind(rc);
+    rc.pushText=function(regName,operator,text,linewise,blockwise){
+      const out=orig(regName,operator,text,linewise,blockwise);
+      if(text&&(operator==='yank'||operator==='delete'||operator==='change')){
+        lastVimYank=text;
+        try{navigator.clipboard&&navigator.clipboard.writeText(text).catch(()=>{})}catch(_){}
+      }
+      return out;
+    };
+  }
+  const seedFromClipboard=async(force)=>{
+    let txt='';
+    try{txt=await navigator.clipboard.readText()}catch(_){return false}
+    if(!txt)return false;
+    if(!force&&txt===lastVimYank)return true;   // clipboard already matches our register
+    try{
+      if(rc.unnamedRegister&&rc.unnamedRegister.setText)rc.unnamedRegister.setText(txt,/\n$/.test(txt));
+    }catch(_){}
+    return true;
+  };
+  const pasteFromClipboard=async key=>{await seedFromClipboard(true);try{CodeMirror.Vim.handleKey(editor,key)}catch(_){}};
+  editor.on('keydown',(inst,e)=>{
+    const v=inst.state.vim;
+    if(!v||v.insertMode||e.ctrlKey||e.metaKey||e.altKey)return;
+    if(e.key==='p'||e.key==='P'){e.preventDefault();pasteFromClipboard(e.key)}
+  });
+  // Also refresh the register whenever focus returns, covering the common
+  // "copied in another app, come back, press p" case.
+  editor.on('focus',()=>{seedFromClipboard().catch(()=>{})});
+}
 function registerVimLeaderCommands(){
   if(vimLeaderCommandsRegistered||!window.CodeMirror||!CodeMirror.Vim)return;
   vimLeaderCommandsRegistered=true;
