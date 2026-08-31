@@ -547,6 +547,7 @@ const sectionSort=new Map();
 const $=id=>document.getElementById(id);
 let vimNormalLinkMarks=[];
 let vimLeaderCommandsRegistered=false;
+let vimSystemClipboardReady=false,lastVimYank='';
 let pendingSourceCursorFromBody=null;
 // Vim keybindings are CodeMirror's official keymap/vim.js addon. Only two
 // things are tracked here: which editors are mid-IME-composition (so autosave
@@ -1932,7 +1933,6 @@ function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLi
 // resolves its built-in <Space>→l before any multi-key sequence):
 //   \n new node, \p Parent edge, \c Child edge, \d delete note,
 //   \x toggle task, \t make task, \T table, \e edges dialog, \y copy link.
-let vimSystemClipboardReady=false,lastVimYank='';
 // Bridge CodeMirror-Vim's unnamed register to the OS clipboard:
 //  - y / d / c / x  also write to navigator.clipboard
 //  - p / P  paste whatever is currently on the clipboard
