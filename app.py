@@ -2438,7 +2438,19 @@ function updateEdgeCombo(){
 }
 function setEdgeRelation(v){edgeRelationVal=v;if(v==='__custom__'){updateEdgeCombo();dlgSetMode('insert',$('edgeCustomRelation'));return}updateEdgeCombo()}
 function currentEdgeRelation(){return edgeRelationVal==='__custom__'?$('edgeCustomRelation').value.trim():(edgeRelationVal||'関連')}
-$('edgeRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:RELATION_CHOICES,current:edgeRelationVal,onPick:setEdgeRelation});
+// incoming = adding a Child to the current note; outgoing = adding a Parent.
+// A category / Index gets カテゴリー|ノート children; a category's parent can
+// only be カテゴリー.
+function edgeRelationChoices(direction){
+  const cd=currentData;
+  if(direction==='incoming'){
+    if(cd&&(cd.is_index||cd.node_type==='カテゴリー'))return RESTRICTED_RELATION_CHOICES;
+  }else if(cd&&cd.node_type==='カテゴリー'){
+    return [{value:'カテゴリー',label:'カテゴリー'}];
+  }
+  return RELATION_CHOICES;
+}
+$('edgeRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:edgeRelationChoices(edgeDialogMode),current:edgeRelationVal,onPick:setEdgeRelation});
 $('edgeCustomRelation').addEventListener('input',updateEdgeCombo);
 // ---- Note search palette: pop up anywhere, keyboard-only, jump to a note.
 //      Also reused as the edge dialog's "pick a target note" step.
@@ -2561,7 +2573,7 @@ async function openEdgeDialog(direction,preferNew=false){
   edgeDialogMode=direction;$('edgeDialogTitle').textContent=direction==='outgoing'?'Parentとの関係を追加':'Childとの関係を追加';
   $('edgeDialogHint').textContent=direction==='outgoing'?(currentData?.can_edit?'このノート自身のParent関係として追加します。':'このノートの所有者ではないため、あなたが追加したParentとして別管理され、本人のParentより下に表示されます。'):'自分のノート側に、現在のノートとの関係を追加します。現在のノート自体は編集しません。';
   $('edgeCustomRelation').value='';$('edgeNewTitle').value='';$('edgePaste').value='';
-  edgeRelationVal='関連';updateEdgeCombo();
+  const _ec=edgeRelationChoices(direction);edgeRelationVal=(_ec===RELATION_CHOICES)?'関連':_ec[0].value;updateEdgeCombo();
   setEdgeTarget('');
   $('edgeNewWrap').style.display='none';$('edgePasteWrap').style.display='none';
   $('edgeDialog').showModal();
