@@ -764,7 +764,7 @@ function renderKeymapBar(){
   }else if(mode==='organize'){
     items=[K('\\o','ソース切替'),K('t→数字','属性変更'),K('p','親追加'),K('c','子追加'),K('P','親編集'),K('C','子編集'),K('Tab','リンク移動'),K('Ctrl+K','検索'),K('?','ヘルプ')];
   }else{
-    items=[K('\\o','整理切替'),K('i','入力'),K('Esc','NORMAL'),K('\\n','作成'),K('\\p','親'),K('\\c','子'),K('\\e','分類'),K('\\y','リンク'),K('\\a','添付'),K('\\t','☑'),K('\\T','表'),K('\\f','検索'),K('nt/nT','タイトル'),K('?','ヘルプ')];
+    items=[K('\\o','整理切替'),K('i','入力'),K('Esc','NORMAL'),K('\\n','作成'),K('\\p','親'),K('\\c','子'),K('\\A','属性'),K('\\e','分類'),K('\\y','リンク'),K('\\a','添付'),K('\\t','☑'),K('\\T','表'),K('\\f','検索'),K('nt/nT','タイトル'),K('?','ヘルプ')];
   }
   el.innerHTML=items.join('');
 }
@@ -1327,7 +1327,19 @@ function authorMiniHtml(u){return '<span class="previewAuthor">'+avatarHtml(u,'s
 function headingInfo(line){const m=line.match(/^(#{1,6})\s+(.+?)\s*$/);return m?{level:m[1].length,text:m[2]}:null}
 function linkInfo(line){const m=line.match(/^\s*(?:[-*+]\s+)?\[((?:\\.|[^\]\\])+)\]\(([^)\s]+\.md)(?:\s+"label-fixed")?\)\s*$/);if(!m)return null;return{label:m[1].replace(/\\([\[\]\\])/g,'$1'),file:decodeURIComponent(m[2].split('/').pop())}}
 function sortedLinks(items,kind){const a=[...items],k=x=>metric(x.file);if(kind==='name')a.sort((x,y)=>x.label.localeCompare(y.label,'ja'));else if(kind==='newest')a.sort((x,y)=>k(y).created_key.localeCompare(k(x).created_key));else if(kind==='oldest')a.sort((x,y)=>k(x).created_key.localeCompare(k(y).created_key));else if(kind==='nodes')a.sort((x,y)=>k(y).node_count-k(x).node_count);else if(kind==='support')a.sort((x,y)=>k(y).support_count-k(x).support_count);else if(kind==='oppose')a.sort((x,y)=>k(y).oppose_count-k(x).oppose_count);else if(kind==='topicRank')a.sort((x,y)=>(k(y).topic_score-k(x).topic_score)||(k(y).topic_use_count-k(x).topic_use_count)||(k(y).topic_appropriate-k(x).topic_appropriate)||x.label.localeCompare(y.label,'ja'));return a}
-function inlinePreview(s){let x=escapeHtml(s);x=x.replace(/!\[([^\]]*)\]\((\/media\/[^)]+)\)/g,(_m,a,t)=>'<img class="inlineImage" src="'+t+'" alt="'+a+'">').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>').replace(/\[((?:\\.|[^\]\\])+)\]\(([^)\s]+\.md)(?:\s+(?:"label-fixed"|&quot;label-fixed&quot;))?\)/g,(_m,l,t)=>'<a href="#" data-file="'+escapeHtml(decodeURIComponent(t.split('/').pop()))+'">'+l.replace(/\\([\[\]\\])/g,'$1')+'</a>');return x}
+function inlinePreview(s){let x=escapeHtml(s);
+  x=x.replace(/!\[([^\]]*)\]\((\/media\/[^)]+)\)/g,(_m,a,t)=>'<img class="inlineImage" src="'+t+'" alt="'+a+'">')
+     .replace(/`([^`]+)`/g,'<code>$1</code>')
+     .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+     .replace(/\*([^*]+)\*/g,'<em>$1</em>')
+     // [label](http(s)://…) — external site, opens in a new tab
+     .replace(/\[((?:\\.|[^\]\\])+)\]\((https?:\/\/[^)\s]+)\)/g,(_m,l,u)=>'<a href="'+u+'" target="_blank" rel="noopener noreferrer">'+l.replace(/\\([\[\]\\])/g,'$1')+'</a>')
+     // internal note link
+     .replace(/\[((?:\\.|[^\]\\])+)\]\(([^)\s]+\.md)(?:\s+(?:"label-fixed"|&quot;label-fixed&quot;))?\)/g,(_m,l,t)=>'<a href="#" data-file="'+escapeHtml(decodeURIComponent(t.split('/').pop()))+'">'+l.replace(/\\([\[\]\\])/g,'$1')+'</a>')
+     // bare http(s):// URL in prose (never right after > or " , so it can't
+     // re-wrap a URL that is already a link)
+     .replace(/(^|[\s(])(https?:\/\/[^\s<)"]+)/g,(_m,pre,u)=>pre+'<a href="'+u+'" target="_blank" rel="noopener noreferrer">'+u+'</a>');
+  return x}
 function relationGroups(edges){
   const map=new Map();
   for(const e of (edges||[])){const k=String(e.relation||'関連').trim()||'関連';if(!map.has(k))map.set(k,[]);map.get(k).push({...e,label:e.title||e.file,file:e.file,relation:k,private:!!e.private})}
@@ -2151,6 +2163,8 @@ function setupVimSystemClipboard(){
     const v=inst.state.vim;
     if(!v||v.insertMode||e.ctrlKey||e.metaKey||e.altKey){if(nPending)flushN();return}
     if(e.key==='p'||e.key==='P'){e.preventDefault();pasteFromClipboard(e.key);return}
+    // ? in NORMAL/VISUAL opens the shortcut help, not Vim's backward-search.
+    if(e.key==='?'){e.preventDefault();if(nPending)flushN();toggleShortcuts();return}
     if(nPending){
       e.preventDefault();
       if(e.key==='t'||e.key==='T'){clearTimeout(nPending);nPending=null;editSourceTitle(inst,e.key==='t');return}
@@ -2181,6 +2195,7 @@ function registerVimLeaderCommands(){
     nnTable:cm=>{if(canEdit())insertMarkdownTable(cm)},
     nnEdgesDialog:cm=>openOrganizeEdgesDialog(vimLinkFileAtCursor(cm)).catch(err=>status(err.message)),
     nnCopyLink:()=>copyCurrentNoteLink().catch(err=>status(err.message)),
+    nnFileType:()=>openFileTypePicker(),
     nnNoteFind:()=>openNotePicker(),
     nnOrganize:()=>{toggleViewMode().catch(console.error)},
     nnAttach:()=>{if(currentData?.can_edit)$('attachmentBtn').click()},
@@ -2200,7 +2215,7 @@ function registerVimLeaderCommands(){
   // `\` leader.
   nmap('\\n','nnNewNode');nmap('\\p','nnEdgeOut');nmap('\\c','nnEdgeIn');nmap('\\d','nnDeleteNote');
   nmap('\\x','nnToggleTask');nmap('\\t','nnMakeTask');nmap('\\T','nnTable');nmap('\\e','nnEdgesDialog');
-  nmap('\\y','nnCopyLink');nmap('\\f','nnNoteFind');nmap('\\o','nnOrganize');nmap('\\a','nnAttach');
+  nmap('\\y','nnCopyLink');nmap('\\f','nnNoteFind');nmap('\\o','nnOrganize');nmap('\\a','nnAttach');nmap('\\A','nnFileType');
   nmap('i','nnSmartInsert');
 }
 $('vimIndicator').onclick=()=>{
@@ -2244,6 +2259,20 @@ function openOrgPicker(title,entries){
   el.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9000;min-width:min(300px,92vw);max-height:80vh;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:0 16px 48px rgba(0,0,0,.3);display:block';
   el.innerHTML='<div style="font-size:11px;font-weight:800;color:var(--muted);padding:2px 4px 7px">'+escapeHtml(title)+'</div>'
     +entries.map((en,i)=>'<button type="button" data-oi="'+i+'" style="display:flex;gap:8px;align-items:center;width:100%;text-align:left;border:0;background:transparent;border-radius:6px;padding:7px 8px;font-size:13px;cursor:pointer"><b style="min-width:1.6em;text-align:center;border:1px solid var(--border);border-radius:4px;font-size:10px;padding:1px 3px">'+escapeHtml(en.key)+'</b><span>'+escapeHtml(en.label)+'</span></button>').join('');
+}
+// The org picker owns the keyboard wherever it is open (Source view too), so
+// this must run in the capture phase, before Vim / CodeMirror see the key.
+window.addEventListener('keydown',e=>{
+  if(!orgPicker)return;
+  e.preventDefault();e.stopPropagation();
+  if(e.key==='Escape'){closeOrgPicker();return}
+  const idx=dlgKeyIndex(e.key);
+  if(idx>=0&&idx<orgPicker.entries.length){const en=orgPicker.entries[idx];closeOrgPicker();en.run()}
+},true);
+function openFileTypePicker(){
+  if(!currentData||currentData.is_index){status('このノートには属性がありません');return}
+  if(!currentData.can_edit){status('自分のノートのみ変更できます');return}
+  openOrgPicker('このノートの属性を変更',NODE_TYPE_OPTIONS.map((o,i)=>({key:String((i+1)%10),label:o[1],run:()=>saveNodeType(o[0])})));
 }
 window.addEventListener('keydown',e=>{
   if(mode!=='organize'||document.querySelector('dialog[open]'))return;
@@ -2567,6 +2596,7 @@ const SHORTCUTS_HTML=[
   '',
   '<b>ソース NORMAL</b>',
   'nt : タイトルを書き直す（空から）／ nT : タイトルを末尾から編集',
+  '\\A : 属性（file_type）を変更',
   '\\n 作成 ／ \\p 親 ／ \\c 子 ／ \\e 分類 ／ \\y リンク',
   '\\a 添付 ／ \\t ☑ ／ \\T 表 ／ \\d 削除 ／ \\f 検索',
   '',
@@ -2603,7 +2633,11 @@ window.addEventListener('keydown',e=>{
   if(openDlg&&openDlg.id!=='shortcutsDialog'&&!openDlg.hasAttribute('data-vim-dialog'))return;
   e.preventDefault();e.stopPropagation();toggleShortcuts();
 },true);
-$('shortcutsDialog').addEventListener('close',()=>{const d=activeVimDialog();if(d)try{d.focus()}catch(_){}});
+$('shortcutsDialog').addEventListener('close',()=>{
+  const d=activeVimDialog();if(d){try{d.focus()}catch(_){}return}
+  if(mode==='source')try{focusSourceEditor()}catch(_){}
+  else if(mode==='organize')try{$('organizeView').focus({preventScroll:true})}catch(_){}
+});
 
 // ---- edge dialog: relation + a target chosen through the search palette ----
 let edgeTargetFile='';
