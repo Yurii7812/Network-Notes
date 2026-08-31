@@ -1960,6 +1960,7 @@ function updateViewModeToggle(){
 }
 function setModeVisibility(next){
   // v70 has only two user-facing modes: Organize and Source.
+  try{closeOrgPicker()}catch(_){}
   $('editWrap').style.display='none';
   $('sourceWrap').style.display=next==='source'?'block':'none';
   $('organizeWrap').style.display=next==='organize'?'block':'none';
@@ -2232,29 +2233,48 @@ function enterEdgeEditExclusive(direction){
   renderEditEdges();if(mode==='organize')renderOrganize();
   status(edgeEditMode[direction]?'編集モード: 数字=行を選択 ／ a=全選択 ／ s=解除 ／ r+数字=関係を変更 ／ d=削除 ／ Esc=終了':'');
 }
+// A real, persistent numbered popup for the organize view (t / r pickers),
+// instead of a status message that flashes and is gone.
+let orgPicker=null;
+function closeOrgPicker(){orgPicker=null;const el=$('orgPickPanel');if(el)el.style.display='none'}
+function openOrgPicker(title,entries){
+  orgPicker={entries};
+  let el=$('orgPickPanel');
+  if(!el){el=document.createElement('div');el.id='orgPickPanel';document.body.appendChild(el);el.addEventListener('click',ev=>{const b=ev.target.closest('[data-oi]');if(!b)return;const en=orgPicker&&orgPicker.entries[+b.dataset.oi];closeOrgPicker();if(en)en.run()})}
+  el.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9000;min-width:min(300px,92vw);max-height:80vh;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:0 16px 48px rgba(0,0,0,.3);display:block';
+  el.innerHTML='<div style="font-size:11px;font-weight:800;color:var(--muted);padding:2px 4px 7px">'+escapeHtml(title)+'</div>'
+    +entries.map((en,i)=>'<button type="button" data-oi="'+i+'" style="display:flex;gap:8px;align-items:center;width:100%;text-align:left;border:0;background:transparent;border-radius:6px;padding:7px 8px;font-size:13px;cursor:pointer"><b style="min-width:1.6em;text-align:center;border:1px solid var(--border);border-radius:4px;font-size:10px;padding:1px 3px">'+escapeHtml(en.key)+'</b><span>'+escapeHtml(en.label)+'</span></button>').join('');
+}
 window.addEventListener('keydown',e=>{
   if(mode!=='organize'||document.querySelector('dialog[open]'))return;
+  if(orgPicker){
+    e.preventDefault();e.stopPropagation();
+    if(e.key==='Escape'){closeOrgPicker();return}
+    const idx=dlgKeyIndex(e.key);
+    if(idx>=0&&idx<orgPicker.entries.length){const en=orgPicker.entries[idx];closeOrgPicker();en.run()}
+    return;
+  }
   const active=document.activeElement;
   const tag=active?.tagName||'';
   const isFormControl=['INPUT','TEXTAREA','SELECT','BUTTON'].includes(tag);
   const editDir=edgeEditMode.outgoing?'outgoing':(edgeEditMode.incoming?'incoming':null);
   const plain=!e.ctrlKey&&!e.metaKey&&!e.altKey&&!isFormControl;
+  const attrEntries=cb=>NODE_TYPE_OPTIONS.map((o,i)=>({key:String((i+1)%10),label:o[1],run:()=>cb(o[0])}));
+  const relEntries=cb=>NEW_NOTE_RELATIONS.map((r,i)=>({key:String((i+1)%10),label:r,run:()=>cb(r)}));
   // Edge edit mode: everything is a direct key press — no Tab/arrow mashing.
   if(editDir&&plain){
     if(e.key==='Escape'){e.preventDefault();edgeEditMode.outgoing=edgeEditMode.incoming=false;selectedEdgeKeys.outgoing.clear();selectedEdgeKeys.incoming.clear();orgKeyPrefix='';renderOrganize();status('');return}
     if(/^[0-9]$/.test(e.key)){
       e.preventDefault();
       const num=e.key==='0'?10:Number(e.key);
-      if(orgKeyPrefix==='r'){orgKeyPrefix='';const rel=NEW_NOTE_RELATIONS[num-1];if(rel)relabelSelectedEdges(editDir,rel);return}
-      if(orgKeyPrefix==='t'){orgKeyPrefix='';const opt=NODE_TYPE_OPTIONS[num-1];if(opt)bulkAttrSelectedEdges(editDir,opt[0]);return}
       const ek=edgeEditOrder[editDir][num-1];
       if(ek){const set=selectedEdgeKeys[editDir];set.has(ek)?set.delete(ek):set.add(ek);renderOrganize()}
       return;
     }
-    if(e.key==='a'){e.preventDefault();selectedEdgeKeys[editDir]=new Set(edgeEditOrder[editDir]);orgKeyPrefix='';renderOrganize();return}
-    if(e.key==='s'){e.preventDefault();selectedEdgeKeys[editDir].clear();orgKeyPrefix='';renderOrganize();return}
-    if(e.key==='r'){e.preventDefault();orgKeyPrefix=orgKeyPrefix==='r'?'':'r';status(orgKeyPrefix==='r'?'関係の番号：1=論点 2=見解 3=支持 4=反対 5=補足 6=まとめ 7=カテゴリー 8=関連 9=分割':'');return}
-    if(e.key==='t'){e.preventDefault();orgKeyPrefix=orgKeyPrefix==='t'?'':'t';status(orgKeyPrefix==='t'?'属性の番号：1=論点 2=見解 3=支持 4=反対 5=補足 6=まとめ 7=カテゴリー 8=ノード':'');return}
+    if(e.key==='a'){e.preventDefault();selectedEdgeKeys[editDir]=new Set(edgeEditOrder[editDir]);renderOrganize();return}
+    if(e.key==='s'){e.preventDefault();selectedEdgeKeys[editDir].clear();renderOrganize();return}
+    if(e.key==='r'){e.preventDefault();if(!selectedEdgeKeys[editDir].size){status('先に行を数字で選択してください');return}openOrgPicker('選択行の関係を一括変更',relEntries(r=>relabelSelectedEdges(editDir,r)));return}
+    if(e.key==='t'){e.preventDefault();if(!selectedEdgeKeys[editDir].size){status('先に行を数字で選択してください');return}openOrgPicker('選択行の属性を一括変更',attrEntries(v=>bulkAttrSelectedEdges(editDir,v)));return}
     if(e.key==='d'||e.key==='Delete'){e.preventDefault();orgKeyPrefix='';deleteSelectedEdges(editDir);return}
     if(e.key==='e'){e.preventDefault();edgeExpandAll[editDir]=!edgeExpandAll[editDir];if(!edgeExpandAll[editDir])edgeExpandedGroups[editDir].clear();renderOrganize();return}
     if(e.key==='o'){e.preventDefault();showOtherEdgeNodes[editDir]=!showOtherEdgeNodes[editDir];localStorage.setItem(editDir==='outgoing'?'nnShowOtherOutgoing':'nnShowOtherIncoming',showOtherEdgeNodes[editDir]?'1':'0');renderOrganize();return}
@@ -2263,13 +2283,12 @@ window.addEventListener('keydown',e=>{
     // Same key both ways: \o toggles Source <-> Organize (lands in NORMAL).
     if(e.key==='\\'){e.preventDefault();orgKeyPrefix='\\';return}
     if(orgKeyPrefix==='\\'){e.preventDefault();orgKeyPrefix='';if(e.key==='o')toggleViewMode().catch(console.error);return}
-    if(e.key==='t'){e.preventDefault();orgKeyPrefix='t';status('属性の番号を押してください（1=論点 … 7=カテゴリー 8=ノード）');return}
-    if(orgKeyPrefix==='t'&&/^[1-8]$/.test(e.key)){e.preventDefault();orgKeyPrefix='';const opt=NODE_TYPE_OPTIONS[Number(e.key)-1];if(opt&&currentData?.can_edit)saveNodeType(opt[0]);return}
+    if(e.key==='t'&&!currentData?.is_index){e.preventDefault();if(currentData?.can_edit)openOrgPicker('このノートの属性を変更',attrEntries(v=>saveNodeType(v)));else status('自分のノートのみ変更できます');return}
     if(e.key==='p'){e.preventDefault();orgKeyPrefix='';openEdgeDialog('outgoing').catch(err=>status(err.message));return}
     if(e.key==='c'){e.preventDefault();orgKeyPrefix='';openEdgeDialog('incoming').catch(err=>status(err.message));return}
     if(e.key==='P'){e.preventDefault();enterEdgeEditExclusive('outgoing');return}
     if(e.key==='C'){e.preventDefault();enterEdgeEditExclusive('incoming');return}
-    if(e.key!=='t')orgKeyPrefix='';
+    if(e.key!=='\\')orgKeyPrefix='';
   }
   if(e.key==='Tab'){
     if(active&&active.closest&&active.closest('.edgeZoneEditing'))return;
