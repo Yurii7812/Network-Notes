@@ -457,10 +457,7 @@ header{
   <option value="">指定なし</option>
 </select></label>
 <div style="font-size:11px;opacity:.7;margin:-3px 0 4px">属性はこのノート自身の種類です（YAML の node_type に保存）。関係とは別です。</div>
-<div>
-  <div style="font-size:13px;margin-bottom:7px">開いていたノートとの関係</div>
-  <div id="relationChoices" class="relationChoices"></div>
-</div>
+<label>開いていたノートとの関係<select id="newRelation"></select></label>
 <label id="customRelationWrap" style="display:none">その他の関係<input id="customRelation" placeholder="関係名" /></label>
 <div style="font-size:12px;opacity:.7">関係は <code>関係::[ノート](file.md)</code> 形式で保存されます。</div>
 <div class="actions"><button value="cancel">キャンセル</button><button id="createBtn" value="default">作成</button></div>
@@ -2102,7 +2099,7 @@ function pageRelations(){
 function chooseRelation(name){
   selectedRelation=name;
   $('customRelationWrap').style.display=name==='__custom__'?'grid':'none';
-  document.querySelectorAll('.relationChoice').forEach(b=>b.classList.toggle('selected',b.dataset.relation===name));
+  if($('newRelation').value!==name)$('newRelation').value=name;
   if(name==='__custom__')setTimeout(()=>$('customRelation').focus(),0);
 }
 async function startNewRootNote(){
@@ -2124,18 +2121,18 @@ function openNewNodeDialog(){
   setTimeout(()=>$('newTitle').focus(),0);
 }
 function renderRelationChoices(){
-  const root=$('relationChoices');root.innerHTML='';
+  const sel=$('newRelation');sel.innerHTML='';
   const page=new Set(pageRelations());
   const names=[...NEW_NOTE_RELATIONS];
   // Legacy/custom relations already present on the page remain selectable,
   // while the default vocabulary stays intentionally small and predictable.
   for(const name of page){if(!names.includes(name))names.push(name)}
-  for(const name of names){
-    const b=document.createElement('button');b.type='button';b.className='relationChoice'+(page.has(name)?' pageItem':'');b.dataset.relation=name;b.textContent=name;b.onclick=()=>chooseRelation(name);root.appendChild(b);
-  }
-  const other=document.createElement('button');other.type='button';other.className='relationChoice';other.dataset.relation='__custom__';other.textContent='＋ その他';other.onclick=()=>chooseRelation('__custom__');root.appendChild(other);
-  chooseRelation(names.includes('カテゴリー')?'カテゴリー':names[0]);
+  for(const name of names){const o=document.createElement('option');o.value=name;o.textContent=name;sel.appendChild(o)}
+  const oc=document.createElement('option');oc.value='__custom__';oc.textContent='＋ その他（自由入力）';sel.appendChild(oc);
+  sel.value=names.includes('カテゴリー')?'カテゴリー':names[0];
+  chooseRelation(sel.value);
 }
+$('newRelation').addEventListener('change',()=>chooseRelation($('newRelation').value));
 function fillSelect(sel,items,emptyText){
   sel.innerHTML='';
   if(!items.length){const o=document.createElement('option');o.value='';o.textContent=emptyText;sel.appendChild(o);sel.disabled=true;return}
@@ -2189,6 +2186,9 @@ async function loadEdgeCandidates(){
   const d=await api('/api/search?scope='+scope+'&limit=80&q='+encodeURIComponent(q));const sel=$('edgeTarget');sel.innerHTML='';
   const items=(d.results||[]).filter(x=>x.file!==current);
   for(const x of items){const o=document.createElement('option');o.value=x.file;o.textContent=(x.title||x.file)+' · @'+(x.author?.username||'');sel.appendChild(o)}
+  // Preselect the top hit so a keyboard user can just press Enter in the search
+  // box to add it, or ArrowDown to pick another candidate from the list.
+  if(items.length)sel.selectedIndex=0;
   $('edgeSubmit').disabled=!items.length&&!$('edgePaste').value.trim();
 }
 async function openEdgeDialog(direction,preferNew=false){if(direction==='outgoing'&&currentData?.is_index){status('IndexにはParentを追加しません');return}
@@ -2198,6 +2198,17 @@ async function openEdgeDialog(direction,preferNew=false){if(direction==='outgoin
   $('edgeSearchLabel').firstChild.textContent=direction==='outgoing'?'リンク先を検索':'自分のリンク元ノートを検索';$('edgeSearch').value='';$('edgePaste').value='';$('edgeNewTitle').value='';$('edgeCustomRelation').value='';$('edgeRelation').value='関連';$('edgeCustomWrap').style.display='none';$('edgeTarget').innerHTML='<option>読み込み中...</option>';$('edgeDialog').showModal();await loadEdgeCandidates();setTimeout(()=>(preferNew?$('edgeNewTitle'):$('edgeSearch')).focus(),0);
 }
 $('edgeSearch').addEventListener('input',()=>{if(edgeSearchTimer)clearTimeout(edgeSearchTimer);edgeSearchTimer=setTimeout(()=>loadEdgeCandidates().catch(e=>status(e.message)),180)});
+// Keyboard: ArrowDown from the search box drops into the candidate list;
+// Enter in the list adds the highlighted note; ArrowUp at the top returns.
+$('edgeSearch').addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'){const t=$('edgeTarget');if(t.options.length){e.preventDefault();if(t.selectedIndex<0)t.selectedIndex=0;t.focus()}}
+});
+$('edgeTarget').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();if($('edgeTarget').value)$('edgeForm').requestSubmit?.($('edgeSubmit'))}
+  else if(e.key==='ArrowUp'&&$('edgeTarget').selectedIndex<=0){e.preventDefault();$('edgeSearch').focus()}
+});
+$('edgeTarget').addEventListener('dblclick',()=>{if($('edgeTarget').value)$('edgeForm').requestSubmit?.($('edgeSubmit'))});
+$('edgeTarget').addEventListener('change',()=>{$('edgeSubmit').disabled=!$('edgeTarget').value&&!$('edgePaste').value.trim()});
 $('edgePaste').addEventListener('input',()=>{$('edgeSubmit').disabled=!$('edgePaste').value.trim()&&!$('edgeTarget').value});
 $('edgeNewBtn').onclick=async()=>{
   const relation=currentEdgeRelation(),title=$('edgeNewTitle').value.trim();
@@ -2574,7 +2585,7 @@ $('graphRelationLabels').checked=graphShowRelationLabels;$('graphRelationLabelsV
 function updateGraphControlsVisibility(){const box=$('graphControls'),btn=$('graphControlsToggle');if(!box||!btn)return;box.classList.toggle('collapsed',graphControlsCollapsed);btn.textContent=graphControlsCollapsed?'パラメータを表示':'隠す';btn.setAttribute('aria-expanded',graphControlsCollapsed?'false':'true')}
 $('graphControlsToggle').onclick=()=>{graphControlsCollapsed=!graphControlsCollapsed;localStorage.setItem('nnGraphControlsCollapsed',graphControlsCollapsed?'1':'0');updateGraphControlsVisibility();setTimeout(()=>queueGraph(80),0)};updateGraphControlsVisibility();
 new ResizeObserver(()=>queueGraph(120)).observe($('graphWrap'));
-$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();const relation=selectedRelation==='__custom__'?$('customRelation').value.trim():selectedRelation;const node_type=$('newNodeType').value;if(!title||!relation)return;if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
+$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();const rv=$('newRelation').value;const relation=rv==='__custom__'?$('customRelation').value.trim():rv;const node_type=$('newNodeType').value;if(!title||!relation)return;if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
 window.addEventListener('beforeunload',()=>{if(!isGuest()&&(dirty||relationSyncPending)){const blob=new Blob([JSON.stringify({name:current,content:editorText(),voter:voterId,commit_relations:true,client_save_session:saveClientSession,client_seq:editRevision})],{type:'application/json'});navigator.sendBeacon('/api/file',blob)}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flushAutosave().catch(()=>{})});
 boot().catch(e=>{status(e.message,{kind:'error'});if(!runtimeLocalMode)showAuth(e.message)});

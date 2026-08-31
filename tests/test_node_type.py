@@ -128,6 +128,7 @@ class NodeTypeSpaContractTests(unittest.TestCase):
     def test_spa_exposes_node_type_selector_and_relation_list(self):
         src = APP.read_text(encoding="utf-8")
         self.assertIn('id="newNodeType"', src)
+        self.assertIn('id="newRelation"', src)
         self.assertIn("const NEW_NOTE_RELATIONS=", src)
         self.assertIn('"node_type": node_type_of(content)', src)
         self.assertIn("new_note_markdown(filename, title, node_type)", src)
