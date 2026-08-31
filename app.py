@@ -445,22 +445,14 @@ header{
 <section id="socialView"><div id="socialContent" class="socialInner"></div></section>
 <dialog id="newDialog" data-vim-dialog tabindex="-1"><form method="dialog" id="newForm">
 <h3 style="margin:0">ノードを追加</h3>
-<div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>i=入力 ／ Esc=ノーマル ／ t=属性 ／ r=関係（一覧が出たら数字で選択） ／ Enter=作成 ／ q=閉じる</span></div>
+<div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>i=入力 ／ Esc=ノーマル ／ t=属性 ／ r=関係（一覧の英数字キーで選択） ／ Enter=作成 ／ q=閉じる</span></div>
 <div class="dlgPickList" style="display:none"></div>
 <label>タイトル<input id="newTitle" data-dlg-default-input required /></label>
-<label>属性<select id="newNodeType">
-  <option value="論点">論点</option>
-  <option value="見解">見解</option>
-  <option value="支持">支持</option>
-  <option value="反対">反対</option>
-  <option value="補足">補足</option>
-  <option value="まとめ">まとめ</option>
-  <option value="カテゴリー">カテゴリー</option>
-  <option value="">指定なし</option>
-</select></label>
+<label>属性<button type="button" id="newNodeTypeBtn" class="dlgCombo" style="text-align:left;width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;font:inherit"></button></label>
+<label id="newNodeTypeCustomWrap" style="display:none">属性（自由入力）<input id="newNodeTypeCustom" maxlength="60" placeholder="属性名" /></label>
 <div style="font-size:11px;opacity:.7;margin:-3px 0 4px">属性はこのノート自身の種類です（YAML の node_type に保存）。関係とは別です。</div>
-<label>開いていたノートとの関係<select id="newRelation"></select></label>
-<label id="customRelationWrap" style="display:none">その他の関係<input id="customRelation" placeholder="関係名" /></label>
+<label>開いていたノートとの関係<button type="button" id="newRelationBtn" class="dlgCombo" style="text-align:left;width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;font:inherit"></button></label>
+<label id="customRelationWrap" style="display:none">関係（自由入力）<input id="customRelation" placeholder="関係名" /></label>
 <div style="font-size:12px;opacity:.7">関係は <code>関係::[ノート](file.md)</code> 形式で保存されます。</div>
 <div class="actions"><button value="cancel">キャンセル</button><button id="createBtn" value="default">作成</button></div>
 </form></dialog>
@@ -491,7 +483,7 @@ header{
 <dialog id="linkifyDialog"><form method="dialog" id="linkifyForm"><h3 style="margin:0">リンク化</h3><div class="profileHint">選択した文章は表示名として固定され、リンク先ノート名を変更しても同期しません。</div><div id="linkifySelected" class="linkifySelected"></div><label>リンク先を検索<input id="linkifySearch" placeholder="ノート名 / @ユーザー名" autocomplete="off" /></label><label>既存ノート<select id="linkifyTarget" class="linkifyTarget" size="8"></select></label><div style="border-top:1px solid var(--border);padding-top:10px"><label>新しいノートのタイトル<input id="linkifyNewTitle" maxlength="160" placeholder="選択した文章を初期値にします" /></label></div><div class="actions"><button value="cancel">キャンセル</button><button id="linkifyNewBtn" type="button">＋ 新しいノートを作成してリンク</button><button id="linkifySubmit" value="default">既存ノートにリンク</button></div></form></dialog>
 
 <dialog id="deleteNotesDialog"><form method="dialog" id="deleteNotesForm"><h3 style="margin:0">ノートを削除</h3><div class="profileHint">自分のノートだけ削除できます。Indexは削除できません。</div><div id="deleteNotesList" style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:9px;font-size:12px"></div><div class="actions"><button value="cancel">キャンセル</button><button id="deleteNotesConfirm" type="button" style="border-color:#b91c1c">削除する</button></div></form></dialog>
-<dialog id="edgeDialog" data-vim-dialog tabindex="-1"><form method="dialog" id="edgeForm"><h3 id="edgeDialogTitle" style="margin:0">エッジを追加</h3><div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>i/s=検索 ／ Esc=ノーマル ／ r=関係一覧 ／ 数字=候補選択 ／ j/k=移動 ／ n=新規 ／ p=貼付 ／ Enter=追加 ／ q=閉じる</span></div><div class="dlgPickList" style="display:none"></div><div id="edgeDialogHint" class="profileHint"></div><label>関係<select id="edgeRelation"><option>カテゴリー</option><option>ノート</option><option>賛同</option><option>否定</option><option>質問</option><option>回答</option><option>関連</option><option>言及</option><option>雑談</option><option class="localOnlyRelation" value="公開版" hidden>公開版</option><option value="__custom__">その他...</option></select></label><label id="edgeCustomWrap" style="display:none">関係名<input id="edgeCustomRelation" maxlength="80" placeholder="関係名" /></label><div class="edgeDialogSearchRow"><label id="edgeSearchLabel">ノートを検索<input id="edgeSearch" data-dlg-default-input autocomplete="off" placeholder="タイトル・本文・@ユーザー名" /></label><label>候補<select id="edgeTarget" class="edgeTargetList" size="8"></select></label></div><label>またはMarkdownリンク / ファイル名を貼り付け<input id="edgePaste" class="edgePaste" placeholder="[ノート名](username__20260829123456.md)" /></label><div class="edgeNewBox"><div class="profileHint">または、この関係で新しいノートを作成</div><label>新しいノートのタイトル<input id="edgeNewTitle" maxlength="160" placeholder="タイトル" /></label><button id="edgeNewBtn" type="button">＋ 新しいノートを作成</button></div><div class="actions"><button value="cancel">キャンセル</button><button id="edgeSubmit" value="default">既存ノートを追加</button></div></form></dialog>
+<dialog id="edgeDialog" data-vim-dialog tabindex="-1"><form method="dialog" id="edgeForm"><h3 id="edgeDialogTitle" style="margin:0">エッジを追加</h3><div class="dlgVimBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0 8px;font-size:10px;color:var(--muted)"><span class="dlgVimMode" style="font-weight:800;border:1px solid var(--border);border-radius:4px;padding:1px 6px">INSERT</span><span>i/s=検索 ／ Esc=ノーマル ／ r=関係 ／ 英数字=候補選択 ／ ↑↓=移動 ／ f/b=ページ ／ N=新規 ／ p=貼付 ／ Enter=追加 ／ q=閉じる</span></div><div class="dlgPickList" style="display:none"></div><div id="edgeDialogHint" class="profileHint"></div><label>関係<button type="button" id="edgeRelationBtn" class="dlgCombo" style="text-align:left;width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;font:inherit"></button></label><label id="edgeCustomWrap" style="display:none">関係名<input id="edgeCustomRelation" maxlength="80" placeholder="関係名" /></label><div class="edgeDialogSearchRow"><label id="edgeSearchLabel">ノートを検索<input id="edgeSearch" data-dlg-default-input autocomplete="off" placeholder="タイトル・本文・@ユーザー名" /></label><label>候補<select id="edgeTarget" class="edgeTargetList" size="10"></select></label></div><label>またはMarkdownリンク / ファイル名を貼り付け<input id="edgePaste" class="edgePaste" placeholder="[ノート名](username__20260829123456.md)" /></label><div class="edgeNewBox"><div class="profileHint">または、この関係で新しいノートを作成</div><label>新しいノートのタイトル<input id="edgeNewTitle" maxlength="160" placeholder="タイトル" /></label><button id="edgeNewBtn" type="button">＋ 新しいノートを作成</button></div><div class="actions"><button value="cancel">キャンセル</button><button id="edgeSubmit" value="default">既存ノートを追加</button></div></form></dialog>
 
 <dialog id="localExportDialog"><form method="dialog" id="localExportForm"><h3 style="margin:0">Webへエクスポート</h3><div class="profileHint">オンライン版へ送るノートと添付ファイルを選択します。ローカル専用ノート・非公開リンク・公開版の規則は自動的に適用されます。</div><div class="exportSectionTitle">ノート</div><div id="localExportNotes" class="exportList"></div><div class="actions"><button id="localExportNotesAll" type="button">ノート全選択</button><button id="localExportNotesNone" type="button">ノート解除</button></div><div class="exportSectionTitle">添付ファイル</div><div id="localExportAttachments" class="exportList"></div><div class="actions"><button id="localExportAttachmentsAll" type="button">添付全選択</button><button id="localExportAttachmentsNone" type="button">添付解除</button></div><div id="localExportSummary" class="profileHint"></div><div class="actions"><button value="cancel">キャンセル</button><button id="localExportConfirm" type="button">選択したものをWebへ送る</button></div></form></dialog>
 <dialog id="registerSaveDialog"><form method="dialog" id="registerSaveForm"><h3 style="margin:0">パスワードを今すぐ保存してください</h3><div class="passwordWarn">このサービスはパスワードの平文を保存しません。忘れた場合に現在のパスワードを表示することはできません。アカウントを作成する前に、パスワードマネージャーなどへ保存してください。</div><label>登録するパスワード<input id="registerPasswordPreview" class="registerPasswordBox" readonly /></label><div class="actions"><button id="registerCopyBtn" type="button">パスワードをコピー</button></div><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input id="registerSavedCheck" type="checkbox">保存したことを確認しました</label><div class="actions"><button value="cancel">戻る</button><button id="registerConfirmBtn" type="button" disabled>保存したので登録</button></div></form></dialog>
@@ -1449,8 +1441,11 @@ function renderNodeTypeRow(root,{hint=false}={}){
   lab.appendChild(document.createTextNode('属性'));
   if(currentData.can_edit){
     const sel=document.createElement('select');sel.style.cssText='font-size:12px;padding:2px 5px';
-    for(const [val,txt] of NODE_TYPE_OPTIONS){const o=document.createElement('option');o.value=val;o.textContent=txt;sel.appendChild(o)}
-    sel.value=currentData.node_type||'';
+    const cur=currentData.node_type||'';
+    const opts=NODE_TYPE_OPTIONS.slice();
+    if(cur&&!opts.some(o=>o[0]===cur))opts.splice(opts.length-1,0,[cur,cur]);
+    for(const [val,txt] of opts){const o=document.createElement('option');o.value=val;o.textContent=txt;sel.appendChild(o)}
+    sel.value=cur;
     sel.onchange=()=>saveNodeType(sel.value);
     lab.appendChild(sel);
   }else{
@@ -2088,8 +2083,45 @@ $('nodeSort').addEventListener('change',renderFiles);
 const BASE_RELATIONS=['カテゴリー','ノート','賛同','否定','質問','回答','関連','言及','雑談'];
 // Relation choices offered when creating a Child note from the open note.
 // Independent from the new note's own 属性 (node_type).
-const NEW_NOTE_RELATIONS=['論点','見解','支持','反対','補足','まとめ','カテゴリー','関連','分割','無記'];
-let selectedRelation='カテゴリー';
+const NEW_NOTE_RELATIONS=['論点','見解','支持','反対','補足','まとめ','カテゴリー','関連','分割'];
+// Shared vocabulary for the 属性 / 関係 pickers. '' = 指定しない, __custom__ = 自由入力.
+const NODE_TYPE_CHOICES=[
+  {value:'論点',label:'論点'},{value:'見解',label:'見解'},{value:'支持',label:'支持'},
+  {value:'反対',label:'反対'},{value:'補足',label:'補足'},{value:'まとめ',label:'まとめ'},
+  {value:'カテゴリー',label:'カテゴリー'},
+  {value:'',label:'指定しない'},{value:'__custom__',label:'その他（自由入力）'},
+];
+const RELATION_CHOICES=[
+  {value:'論点',label:'論点'},{value:'見解',label:'見解'},{value:'支持',label:'支持'},
+  {value:'反対',label:'反対'},{value:'補足',label:'補足'},{value:'まとめ',label:'まとめ'},
+  {value:'カテゴリー',label:'カテゴリー'},{value:'関連',label:'関連'},{value:'分割',label:'分割'},
+  {value:'',label:'指定しない'},{value:'__custom__',label:'その他（自由入力）'},
+];
+function choiceLabel(choices,v){const c=choices.find(x=>x.value===v);return c?c.label:(v||'指定しない')}
+// --- new-note dialog: 属性 mirrors into 関係 until the user picks a relation ---
+let newNodeTypeVal='',newRelationVal='',newRelationTouched=false;
+function updateNewCombos(){
+  const ntb=$('newNodeTypeBtn'),rb=$('newRelationBtn');
+  if(ntb)ntb.textContent=(newNodeTypeVal==='__custom__'?($('newNodeTypeCustom').value.trim()||'（自由入力）'):choiceLabel(NODE_TYPE_CHOICES,newNodeTypeVal))+'  ▾';
+  if(rb)rb.textContent=(newRelationVal==='__custom__'?($('customRelation').value.trim()||'（自由入力）'):choiceLabel(RELATION_CHOICES,newRelationVal))+'  ▾';
+  $('newNodeTypeCustomWrap').style.display=newNodeTypeVal==='__custom__'?'grid':'none';
+  $('customRelationWrap').style.display=newRelationVal==='__custom__'?'grid':'none';
+}
+function setNewNodeType(v){
+  newNodeTypeVal=v;
+  if(v==='__custom__'){updateNewCombos();dlgSetMode('insert',$('newNodeTypeCustom'));return}
+  if(!newRelationTouched){
+    const parentCat=currentData&&currentData.node_type==='カテゴリー';
+    if(parentCat)newRelationVal='カテゴリー';
+    else if(v)newRelationVal=v;            // 指定しない ('') leaves the relation alone
+  }
+  updateNewCombos();
+}
+function setNewRelation(v){
+  newRelationTouched=true;newRelationVal=v;
+  if(v==='__custom__'){updateNewCombos();dlgSetMode('insert',$('customRelation'));return}
+  updateNewCombos();
+}
 function pageRelations(){
   const out=[];
   for(const line of editorText().split('\n')){
@@ -2097,12 +2129,6 @@ function pageRelations(){
     if(info&&info.relation&&!out.includes(info.relation))out.push(info.relation);
   }
   return out;
-}
-function chooseRelation(name){
-  selectedRelation=name;
-  $('customRelationWrap').style.display=name==='__custom__'?'grid':'none';
-  if($('newRelation').value!==name)$('newRelation').value=name;
-  if(name==='__custom__')setTimeout(()=>$('customRelation').focus(),0);
 }
 async function startNewRootNote(){
   if(!requireAuth('自分のノートを書くにはログインまたは新規登録してください',()=>startNewRootNote()))return;
@@ -2117,24 +2143,17 @@ async function startNewRootNote(){
 function openNewNodeDialog(){
   if(isGuest()){showAuth('自分のノートを書くにはログインまたは新規登録してください',()=>startNewRootNote());return}
   if(!currentData?.can_edit){status('新しいノードは自分のノートから作成してください');return}
-  $('newTitle').value='';$('customRelation').value='';$('newNodeType').value='';
-  renderRelationChoices();
+  $('newTitle').value='';$('customRelation').value='';$('newNodeTypeCustom').value='';
+  newNodeTypeVal='';newRelationTouched=false;
+  newRelationVal=(currentData&&currentData.node_type==='カテゴリー')?'カテゴリー':'';
+  updateNewCombos();
   $('newDialog').showModal();
   setTimeout(()=>dlgSetMode('insert',$('newTitle')),0);
 }
-function renderRelationChoices(){
-  const sel=$('newRelation');sel.innerHTML='';
-  const page=new Set(pageRelations());
-  const names=[...NEW_NOTE_RELATIONS];
-  // Legacy/custom relations already present on the page remain selectable,
-  // while the default vocabulary stays intentionally small and predictable.
-  for(const name of page){if(!names.includes(name))names.push(name)}
-  for(const name of names){const o=document.createElement('option');o.value=name;o.textContent=name;sel.appendChild(o)}
-  const oc=document.createElement('option');oc.value='__custom__';oc.textContent='＋ その他（自由入力）';sel.appendChild(oc);
-  sel.value=names.includes('カテゴリー')?'カテゴリー':names[0];
-  chooseRelation(sel.value);
-}
-$('newRelation').addEventListener('change',()=>chooseRelation($('newRelation').value));
+$('newNodeTypeBtn').onclick=()=>dlgOpenPicker({title:'属性を選択（英数字キー / クリック）',entries:NODE_TYPE_CHOICES,current:newNodeTypeVal,onPick:setNewNodeType});
+$('newRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:RELATION_CHOICES,current:newRelationVal,onPick:setNewRelation});
+$('newNodeTypeCustom').addEventListener('input',updateNewCombos);
+$('customRelation').addEventListener('input',updateNewCombos);
 function fillSelect(sel,items,emptyText){
   sel.innerHTML='';
   if(!items.length){const o=document.createElement('option');o.value='';o.textContent=emptyText;sel.appendChild(o);sel.disabled=true;return}
@@ -2181,16 +2200,23 @@ $('organizeEdgeSubmit').onclick=async()=>{
 };
 function vimLinkFileAtCursor(cm){const cur=cm.getCursor(),hit=markdownLinkAt(cm.getLine(cur.line)||'',cur.ch);return hit?.file||''}
 
-function currentEdgeRelation(){const v=$('edgeRelation').value;return v==='__custom__'?$('edgeCustomRelation').value.trim():v}
-$('edgeRelation').addEventListener('change',()=>{$('edgeCustomWrap').style.display=$('edgeRelation').value==='__custom__'?'grid':'none'});
+let edgeRelationVal='関連';
+function updateEdgeCombo(){
+  const b=$('edgeRelationBtn');if(b)b.textContent=(edgeRelationVal==='__custom__'?($('edgeCustomRelation').value.trim()||'（自由入力）'):choiceLabel(RELATION_CHOICES,edgeRelationVal))+'  ▾';
+  $('edgeCustomWrap').style.display=edgeRelationVal==='__custom__'?'grid':'none';
+}
+function setEdgeRelation(v){edgeRelationVal=v;if(v==='__custom__'){updateEdgeCombo();dlgSetMode('insert',$('edgeCustomRelation'));return}updateEdgeCombo()}
+function currentEdgeRelation(){return edgeRelationVal==='__custom__'?$('edgeCustomRelation').value.trim():(edgeRelationVal||'指定しない')}
+$('edgeRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:RELATION_CHOICES,current:edgeRelationVal,onPick:setEdgeRelation});
+$('edgeCustomRelation').addEventListener('input',updateEdgeCombo);
 async function loadEdgeCandidates(){
   const q=$('edgeSearch').value.trim();const scope=edgeDialogMode==='incoming'?'mine':'all';
   const d=await api('/api/search?scope='+scope+'&limit=80&q='+encodeURIComponent(q));const sel=$('edgeTarget');sel.innerHTML='';
   const items=(d.results||[]).filter(x=>x.file!==current);
-  // Number the first ten so a NORMAL-mode digit key picks that candidate.
-  items.forEach((x,i)=>{const o=document.createElement('option');o.value=x.file;o.textContent=(i<10?((i+1)%10)+'. ':'')+(x.title||x.file)+' · @'+(x.author?.username||'');sel.appendChild(o)});
-  // Preselect the top hit so a keyboard user can just press Enter in the search
-  // box to add it, or ArrowDown to pick another candidate from the list.
+  for(const x of items){const o=document.createElement('option');o.value=x.file;o.textContent=(x.title||x.file)+' · @'+(x.author?.username||'');sel.appendChild(o)}
+  // Reset the key window and preselect the top hit (Enter in the search box
+  // adds it; the windowed number/letter keys pick another).
+  edgeResetWindow();
   if(items.length)sel.selectedIndex=0;
   $('edgeSubmit').disabled=!items.length&&!$('edgePaste').value.trim();
 }
@@ -2198,7 +2224,7 @@ async function openEdgeDialog(direction,preferNew=false){if(direction==='outgoin
   if(isGuest()){showAuth(direction==='incoming'?'このノートにつながる自分のノートを書くにはログインまたは新規登録してください':'関係を追加するにはログインまたは新規登録してください',()=>openEdgeDialog(direction,preferNew));return}
   edgeDialogMode=direction;$('edgeDialogTitle').textContent=direction==='outgoing'?'Parentとの関係を追加':'Childとの関係を追加';
   $('edgeDialogHint').textContent=direction==='outgoing'?(currentData?.can_edit?'このノート自身のParent関係として追加します。':'このノートの所有者ではないため、あなたが追加したParentとして別管理され、本人のParentより下に表示されます。'):'自分のノート側に、現在のノートとの関係を追加します。現在のノート自体は編集しません。';
-  $('edgeSearchLabel').firstChild.textContent=direction==='outgoing'?'リンク先を検索':'自分のリンク元ノートを検索';$('edgeSearch').value='';$('edgePaste').value='';$('edgeNewTitle').value='';$('edgeCustomRelation').value='';$('edgeRelation').value='関連';$('edgeCustomWrap').style.display='none';$('edgeTarget').innerHTML='<option>読み込み中...</option>';$('edgeDialog').showModal();await loadEdgeCandidates();setTimeout(()=>dlgSetMode('insert',preferNew?$('edgeNewTitle'):$('edgeSearch')),0);
+  $('edgeSearchLabel').firstChild.textContent=direction==='outgoing'?'リンク先を検索':'自分のリンク元ノートを検索';$('edgeSearch').value='';$('edgePaste').value='';$('edgeNewTitle').value='';$('edgeCustomRelation').value='';edgeRelationVal='関連';updateEdgeCombo();$('edgeTarget').innerHTML='<option>読み込み中...</option>';$('edgeDialog').showModal();await loadEdgeCandidates();setTimeout(()=>dlgSetMode('insert',preferNew?$('edgeNewTitle'):$('edgeSearch')),0);
 }
 $('edgeSearch').addEventListener('input',()=>{if(edgeSearchTimer)clearTimeout(edgeSearchTimer);edgeSearchTimer=setTimeout(()=>loadEdgeCandidates().catch(e=>status(e.message)),180)});
 // Keyboard: ArrowDown from the search box drops into the candidate list;
@@ -2235,47 +2261,48 @@ $('newDialog').addEventListener('close',refocusVimAfterDialog);
 $('edgeDialog').addEventListener('close',refocusVimAfterDialog);
 
 // ---- Modal (Vim-like) keyboard layer for the \n / \p / \c popups ----
-// NORMAL: t/r open a picker, then a digit chooses; digits pick a candidate;
-//         j/k move; Enter confirms; q closes. INSERT: type text; Esc -> NORMAL.
-let dlgMode='insert',dlgPrefix='';
+// INSERT: type text; Esc -> NORMAL.  NORMAL: single-key commands.
+// A picker panel (属性 / 関係) is chosen with number+letter keys — the same
+// panel whether it was opened by keyboard (t / r) or by clicking the field.
+let dlgMode='insert';
 function activeVimDialog(){return document.querySelector('dialog[open][data-vim-dialog]')}
-let dlgCurEntries=[];
-function dlgHidePickList(){dlgCurEntries=[];const dlg=activeVimDialog();const el=dlg&&dlg.querySelector('.dlgPickList');if(el){el.style.display='none';el.innerHTML=''}}
-function dlgPickEntries(dlg,kind){
-  if(kind==='t'){
-    return NODE_TYPE_OPTIONS.map(o=>({label:o[1],run:()=>{$('newNodeType').value=o[0];status('属性: '+nodeTypeLabel(o[0]))}}));
-  }
-  // kind === 'r'
-  const sel=dlg.id==='newDialog'?$('newRelation'):$('edgeRelation');
-  const customIn=dlg.id==='newDialog'?$('customRelation'):$('edgeCustomRelation');
-  return [...sel.options].filter(op=>!op.hidden).map(op=>({label:op.textContent,run:()=>{
-    sel.value=op.value;sel.dispatchEvent(new Event('change'));
-    if(op.value==='__custom__')dlgSetMode('insert',customIn);else status('関係: '+op.value);
-  }}));
-}
-function dlgShowPickList(kind){
-  const dlg=activeVimDialog();if(!dlg)return;
-  const el=dlg.querySelector('.dlgPickList');if(!el)return;
-  const entries=dlgPickEntries(dlg,kind);
-  dlgCurEntries=entries;
+// key <-> index: 0->'1'..8->'9', 9->'0', 10->'a', 11->'b', ...
+function dlgKeyChar(i){return i<9?String(i+1):(i===9?'0':String.fromCharCode(97+i-10))}
+function dlgKeyIndex(ch){ch=String(ch||'').toLowerCase();if(ch==='0')return 9;if(ch>='1'&&ch<='9')return ch.charCodeAt(0)-49;if(ch>='a'&&ch<='z')return 10+ch.charCodeAt(0)-97;return -1}
+
+let dlgPicker=null; // {title, entries:[{value,label}], current, onPick}
+function dlgPanelEl(){const d=activeVimDialog();return d&&d.querySelector('.dlgPickList')}
+function dlgClosePicker(){dlgPicker=null;const el=dlgPanelEl();if(el){el.style.display='none';el.innerHTML=''}}
+function dlgRenderPicker(){
+  const el=dlgPanelEl();if(!el||!dlgPicker)return;
   el.innerHTML='';
-  el.style.cssText='display:grid;gap:1px;margin:0 0 8px;padding:5px;border:1px solid var(--border);border-radius:8px;background:#fff;box-shadow:0 6px 20px rgba(0,0,0,.14);max-height:210px;overflow:auto';
-  const head=document.createElement('div');head.textContent=(kind==='t'?'属性を選択（数字キー）':'関係を選択（数字キー）');
-  head.style.cssText='font-size:10px;font-weight:800;color:var(--muted);padding:2px 4px 4px';el.appendChild(head);
-  entries.forEach((en,i)=>{
+  el.style.cssText='display:block;margin:0 0 8px;padding:5px;border:1px solid var(--border);border-radius:8px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16);max-height:min(46vh,300px);overflow:auto';
+  if(dlgPicker.title){const h=document.createElement('div');h.textContent=dlgPicker.title;h.style.cssText='font-size:10px;font-weight:800;color:var(--muted);padding:2px 4px 5px';el.appendChild(h)}
+  dlgPicker.entries.forEach((en,i)=>{
+    const sel=en.value===dlgPicker.current;
     const row=document.createElement('button');row.type='button';
-    row.style.cssText='display:flex;gap:8px;align-items:center;text-align:left;padding:5px 7px;border:0;background:transparent;border-radius:6px;font-size:13px;cursor:pointer;width:100%';
-    const badge=i<10?String((i+1)%10):'·';
-    row.innerHTML='<b style="min-width:1.4em;text-align:center;border:1px solid var(--border);border-radius:4px;font-size:10px;padding:0 3px">'+badge+'</b><span>'+escapeHtml(en.label)+'</span>';
-    row.onmouseenter=()=>row.style.background='#eee';
-    row.onmouseleave=()=>row.style.background='transparent';
-    row.onclick=()=>{en.run();dlgHidePickList();dlgPrefix='';};
+    row.style.cssText='display:flex;gap:8px;align-items:center;text-align:left;padding:5px 7px;border:0;border-radius:6px;font-size:13px;cursor:pointer;width:100%;background:'+(sel?'#e9e9e9':'transparent');
+    row.innerHTML='<b style="min-width:1.5em;text-align:center;border:1px solid var(--border);border-radius:4px;font-size:10px;padding:0 3px">'+dlgKeyChar(i)+'</b><span>'+escapeHtml(en.label)+'</span>';
+    row.onmouseenter=()=>{if(!sel)row.style.background='#f0f0f0'};
+    row.onmouseleave=()=>{if(!sel)row.style.background='transparent'};
+    row.onclick=()=>dlgPickIndex(i);
     el.appendChild(row);
+    if(sel)setTimeout(()=>{try{row.scrollIntoView({block:'nearest'})}catch(_){}},0);
   });
+}
+function dlgOpenPicker(cfg){
+  const dlg=activeVimDialog();if(!dlg)return;
+  if(dlgMode!=='normal')dlgSetMode('normal');
+  dlgPicker=cfg;dlgRenderPicker();
+}
+function dlgPickIndex(i){
+  if(!dlgPicker)return;
+  const en=dlgPicker.entries[i];if(!en)return;
+  const cb=dlgPicker.onPick;dlgClosePicker();cb&&cb(en.value);
 }
 function dlgSetMode(m,target){
   const dlg=activeVimDialog();if(!dlg)return;
-  dlgMode=m;dlgPrefix='';dlgHidePickList();
+  dlgMode=m;dlgClosePicker();
   const ind=dlg.querySelector('.dlgVimMode');if(ind)ind.textContent=m==='insert'?'INSERT':'NORMAL';
   if(m==='insert'){
     const t=target||dlg.querySelector('[data-dlg-default-input]')||dlg.querySelector('input,textarea');
@@ -2294,29 +2321,49 @@ function dlgConfirm(){
     $('edgeForm').requestSubmit($('edgeSubmit'));
   }
 }
-function dlgMoveEdgeTarget(step){
-  const t=$('edgeTarget');if(!t.options.length)return;
-  let i=t.selectedIndex<0?0:t.selectedIndex+step;
-  i=Math.max(0,Math.min(t.options.length-1,i));t.selectedIndex=i;
-  t.options[i]&&t.options[i].scrollIntoView&&t.options[i].scrollIntoView({block:'nearest'});
-  t.dispatchEvent(new Event('change'));
+// ---- edge-dialog candidate window: keys re-map as the window is paged ----
+const EDGE_RESERVED=new Set(['i','q','r','s','p','f','b','n']);
+const EDGE_CAND_KEYS=(function(){const a=['1','2','3','4','5','6','7','8','9','0'];for(let c=97;c<=122;c++){const ch=String.fromCharCode(c);if(!EDGE_RESERVED.has(ch))a.push(ch)}return a})();
+let edgeWinStart=0;
+function edgeRelabelCandidates(){
+  const t=$('edgeTarget');
+  for(let i=0;i<t.options.length;i++){
+    const o=t.options[i];
+    if(o.dataset.base===undefined)o.dataset.base=o.textContent.replace(/^[0-9a-z]\.\s/,'');
+    const k=i-edgeWinStart;
+    o.textContent=(k>=0&&k<EDGE_CAND_KEYS.length)?EDGE_CAND_KEYS[k]+'. '+o.dataset.base:'   '+o.dataset.base;
+  }
 }
-function dlgHandleDigit(dlg,n){
-  // A picker (t / r) is open: choose that numbered entry.
-  if(dlgPrefix==='t'||dlgPrefix==='r'){
-    const en=dlgCurEntries[n-1];dlgPrefix='';
-    if(en)en.run();
-    return;
-  }
-  // No picker open: on the edge dialog, a bare digit picks the Nth candidate.
-  if(dlg.id==='edgeDialog'){
-    const t=$('edgeTarget');
-    if(n<=t.options.length){t.selectedIndex=n-1;t.dispatchEvent(new Event('change'));t.options[n-1]&&t.options[n-1].scrollIntoView&&t.options[n-1].scrollIntoView({block:'nearest'})}
-  }
+function edgeResetWindow(){edgeWinStart=0;edgeRelabelCandidates()}
+function edgePageWindow(dir){
+  const n=$('edgeTarget').options.length;if(!n)return;
+  let s=edgeWinStart+dir*EDGE_CAND_KEYS.length;
+  if(s<0)s=0;if(s>n-1)s=Math.max(0,edgeWinStart);
+  edgeWinStart=s;edgeRelabelCandidates();
+  const t=$('edgeTarget');t.selectedIndex=s;t.options[s]&&t.options[s].scrollIntoView({block:'nearest'});t.dispatchEvent(new Event('change'));
+}
+function edgeSelectInWindow(k){
+  const t=$('edgeTarget'),idx=edgeWinStart+k;
+  if(idx<0||idx>=t.options.length)return;
+  t.selectedIndex=idx;t.options[idx].scrollIntoView({block:'nearest'});t.dispatchEvent(new Event('change'));
+}
+function edgeMoveSel(step){
+  const t=$('edgeTarget');if(!t.options.length)return;
+  let i=Math.max(0,Math.min(t.options.length-1,(t.selectedIndex<0?0:t.selectedIndex)+step));
+  t.selectedIndex=i;t.options[i].scrollIntoView({block:'nearest'});t.dispatchEvent(new Event('change'));
+  const W=EDGE_CAND_KEYS.length;
+  if(i<edgeWinStart||i>=edgeWinStart+W){edgeWinStart=Math.floor(i/W)*W;edgeRelabelCandidates()}
 }
 window.addEventListener('keydown',e=>{
   const dlg=activeVimDialog();if(!dlg)return;
   if(e.ctrlKey||e.metaKey||e.altKey||e.key==='Tab')return;
+  if(dlgPicker){
+    e.preventDefault();e.stopPropagation();
+    if(e.key==='Escape'){dlgClosePicker();return}
+    const idx=dlgKeyIndex(e.key);
+    if(idx>=0&&idx<dlgPicker.entries.length)dlgPickIndex(idx);
+    return;
+  }
   if(dlgMode==='insert'){
     if(e.key==='Escape'){e.preventDefault();e.stopPropagation();dlgSetMode('normal');return}
     if(e.key==='Enter'){
@@ -2326,28 +2373,27 @@ window.addEventListener('keydown',e=>{
     }
     return;
   }
-  // NORMAL mode — keystrokes are commands, never text.
+  // NORMAL — keystrokes are commands, never text.
   e.stopPropagation();
-  if(/^[0-9]$/.test(e.key)){e.preventDefault();dlgHandleDigit(dlg,e.key==='0'?10:Number(e.key));dlgHidePickList();return}
-  if(e.key==='t'&&dlg.id==='newDialog'){e.preventDefault();dlgPrefix='t';dlgShowPickList('t');return}
-  if(e.key==='r'){e.preventDefault();dlgPrefix='r';dlgShowPickList('r');return}
-  dlgHidePickList();
   if(e.key==='Escape'){e.preventDefault();dlgCancelDialog(dlg);return}
   if(e.key==='Enter'){e.preventDefault();dlgConfirm();return}
   if(e.key==='q'){e.preventDefault();dlgCancelDialog(dlg);return}
   if(e.key==='i'){e.preventDefault();dlgSetMode('insert');return}
+  if(e.key==='r'){e.preventDefault();(dlg.id==='newDialog'?$('newRelationBtn'):$('edgeRelationBtn')).click();return}
+  if(e.key==='t'&&dlg.id==='newDialog'){e.preventDefault();$('newNodeTypeBtn').click();return}
   if(dlg.id==='edgeDialog'){
     if(e.key==='s'||e.key==='/'){e.preventDefault();dlgSetMode('insert',$('edgeSearch'));return}
     if(e.key==='p'){e.preventDefault();dlgSetMode('insert',$('edgePaste'));return}
-    if(e.key==='n'){e.preventDefault();dlgSetMode('insert',$('edgeNewTitle'));return}
-    if(e.key==='j'){e.preventDefault();dlgMoveEdgeTarget(1);return}
-    if(e.key==='k'){e.preventDefault();dlgMoveEdgeTarget(-1);return}
+    if(e.key==='N'){e.preventDefault();dlgSetMode('insert',$('edgeNewTitle'));return}
+    if(e.key==='f'||e.key==='.'||e.key===']'){e.preventDefault();edgePageWindow(1);return}
+    if(e.key==='b'||e.key===','||e.key==='['){e.preventDefault();edgePageWindow(-1);return}
+    if(e.key==='ArrowDown'){e.preventDefault();edgeMoveSel(1);return}
+    if(e.key==='ArrowUp'){e.preventDefault();edgeMoveSel(-1);return}
+    const ci=EDGE_CAND_KEYS.indexOf(e.key);
+    if(ci>=0){e.preventDefault();edgeSelectInWindow(ci);return}
   }
-  dlgPrefix='';
 },true);
-function dlgCancelDialog(dlg){dlgHidePickList();dlgMode='normal';dlgPrefix='';try{dlg.close()}catch(_){}}
-// Esc never auto-closes these dialogs; our keydown layer routes it
-// (INSERT -> NORMAL, NORMAL -> close). Closing is always an explicit .close().
+function dlgCancelDialog(dlg){dlgClosePicker();dlgMode='normal';try{dlg.close()}catch(_){}}
 for(const id of ['newDialog','edgeDialog'])$(id).addEventListener('cancel',e=>{
   e.preventDefault();
   if(dlgMode==='insert')dlgSetMode('normal');
@@ -2707,7 +2753,7 @@ $('graphRelationLabels').checked=graphShowRelationLabels;$('graphRelationLabelsV
 function updateGraphControlsVisibility(){const box=$('graphControls'),btn=$('graphControlsToggle');if(!box||!btn)return;box.classList.toggle('collapsed',graphControlsCollapsed);btn.textContent=graphControlsCollapsed?'パラメータを表示':'隠す';btn.setAttribute('aria-expanded',graphControlsCollapsed?'false':'true')}
 $('graphControlsToggle').onclick=()=>{graphControlsCollapsed=!graphControlsCollapsed;localStorage.setItem('nnGraphControlsCollapsed',graphControlsCollapsed?'1':'0');updateGraphControlsVisibility();setTimeout(()=>queueGraph(80),0)};updateGraphControlsVisibility();
 new ResizeObserver(()=>queueGraph(120)).observe($('graphWrap'));
-$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();const rv=$('newRelation').value;const relation=rv==='__custom__'?$('customRelation').value.trim():rv;const node_type=$('newNodeType').value;if(!title||!relation)return;if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
+$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();if(!title){dlgSetMode('insert',$('newTitle'));status('タイトルを入力してください');return}const node_type=newNodeTypeVal==='__custom__'?$('newNodeTypeCustom').value.trim():newNodeTypeVal;let relation=newRelationVal==='__custom__'?$('customRelation').value.trim():newRelationVal;if(!relation)relation='指定しない';if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
 window.addEventListener('beforeunload',()=>{if(!isGuest()&&(dirty||relationSyncPending)){const blob=new Blob([JSON.stringify({name:current,content:editorText(),voter:voterId,commit_relations:true,client_save_session:saveClientSession,client_seq:editRevision})],{type:'application/json'});navigator.sendBeacon('/api/file',blob)}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flushAutosave().catch(()=>{})});
 boot().catch(e=>{status(e.message,{kind:'error'});if(!runtimeLocalMode)showAuth(e.message)});
@@ -3066,14 +3112,17 @@ def set_updated_frontmatter(content: str, value: str | None = None) -> str:
 
 
 def normalized_node_type(value: str) -> str:
-    """Return a recognized node_type, or "" for unspecified / unknown values.
+    """Normalize a node_type value.
 
-    ``指定なし`` and any label outside :data:`NODE_TYPES` are treated as
-    unspecified. Unknown values are dropped rather than rejected so hand-edited
-    Markdown never fails to load.
+    :data:`NODE_TYPES` is the standard vocabulary, but a free-form value is
+    also allowed (the UI offers "その他入力"). Empty / "指定なし" / "指定しない"
+    all mean unspecified and yield "". A single line, length-capped, so a
+    hand-edited value can never break Markdown parsing.
     """
-    v = str(value or "").strip().strip('"\'')
-    return v if v in NODE_TYPES else ""
+    v = str(value or "").replace("\n", " ").strip().strip('"\'')
+    if v in ("", "指定なし", "指定しない", "なし", "none", "unspecified"):
+        return ""
+    return v[:60]
 
 
 def node_type_of(content: str) -> str:

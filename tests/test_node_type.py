@@ -44,9 +44,15 @@ class NodeTypeFrontmatterTests(unittest.TestCase):
             text = f"---\ncreator::alice\ncreated: x\nupdated: x\nnode_type: {nt}\n---\n\n# T\n"
             self.assertEqual(self.m.node_type_of(text), nt)
 
-    def test_unknown_node_type_is_dropped_not_rejected(self):
-        text = "---\ncreator::alice\ncreated: x\nupdated: x\nnode_type: 宇宙\n---\n\n# T\n"
-        self.assertEqual(self.m.node_type_of(text), "")
+    def test_custom_node_type_is_kept(self):
+        # The UI offers "その他入力"; a free-form value must survive.
+        text = "---\ncreator::alice\ncreated: x\nupdated: x\nnode_type: 前提\n---\n\n# T\n"
+        self.assertEqual(self.m.node_type_of(text), "前提")
+
+    def test_shitei_shinai_reads_as_unspecified(self):
+        for label in ("指定しない", "指定なし", "なし"):
+            text = f"---\ncreator::alice\ncreated: x\nupdated: x\nnode_type: {label}\n---\n\n# T\n"
+            self.assertEqual(self.m.node_type_of(text), "")
 
     # --- writing ---------------------------------------------------------
     def test_new_note_markdown_embeds_node_type_and_keeps_core_metadata(self):
@@ -58,9 +64,13 @@ class NodeTypeFrontmatterTests(unittest.TestCase):
         self.assertEqual(self.m.node_type_of(text), "見解")
 
     def test_new_note_markdown_omits_line_when_unspecified(self):
-        for value in ("", "指定なし", "宇宙"):
+        for value in ("", "指定なし", "指定しない"):
             text = self.m.new_note_markdown("alice__20260101000000.md", "T", value)
             self.assertNotIn("node_type", text)
+
+    def test_new_note_markdown_keeps_a_custom_node_type(self):
+        text = self.m.new_note_markdown("alice__20260101000000.md", "T", "前提")
+        self.assertEqual(self.m.node_type_of(text), "前提")
 
     def test_set_node_type_add_replace_remove_preserves_core_metadata(self):
         base = "---\ncreator::alice\ncreated: C\nupdated: U\n---\n\n# T\n\nbody\n"
@@ -127,21 +137,25 @@ class NodeTypeFrontmatterTests(unittest.TestCase):
 class NodeTypeSpaContractTests(unittest.TestCase):
     def test_spa_exposes_node_type_selector_and_relation_list(self):
         src = APP.read_text(encoding="utf-8")
-        self.assertIn('id="newNodeType"', src)
-        self.assertIn('id="newRelation"', src)
-        self.assertIn("const NEW_NOTE_RELATIONS=", src)
+        self.assertIn('id="newNodeTypeBtn"', src)
+        self.assertIn('id="newRelationBtn"', src)
+        self.assertIn("const RELATION_CHOICES=", src)
+        self.assertIn("const NODE_TYPE_CHOICES=", src)
         self.assertIn('"node_type": node_type_of(content)', src)
         self.assertIn("new_note_markdown(filename, title, node_type)", src)
         # unspecified node_type reads as "ノード", never inferred from relations
         self.assertIn("function nodeTypeLabel(v){return String(v||'')||'ノード'}", src)
+        # attribute mirrors into the relation until the user picks one
+        self.assertIn("newRelationTouched", src)
         # keyboard-first edge editing endpoints
         self.assertIn('u.path == "/api/edge-relabel"', src)
         self.assertIn('u.path == "/api/node-type"', src)
         self.assertIn("function relabelSelectedEdges(direction,relation)", src)
-        # modal (Esc/i + number) keyboard layer for the \\n / \\p / \\c popups
+        # one shared picker panel for keyboard + mouse, number+letter keys
         self.assertIn('data-vim-dialog', src)
         self.assertIn("function activeVimDialog()", src)
-        self.assertIn("function dlgHandleDigit(dlg,n)", src)
+        self.assertIn("function dlgOpenPicker(cfg)", src)
+        self.assertIn("const EDGE_CAND_KEYS=", src)
 
 
 if __name__ == "__main__":
