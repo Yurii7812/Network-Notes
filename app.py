@@ -166,6 +166,11 @@ button:hover{background:#f3f3f3}
 .CodeMirror-scroll{padding-left:42px;padding-right:42px}
 .CodeMirror-lines{max-width:900px;margin:0 auto;padding:24px 0 48px}
 .CodeMirror-cursor{border-left:2px solid #000!important}
+/* INSERT: a thin bar. NORMAL/VISUAL: a full-cell block (width set inline by JS
+   to the real glyph advance so it covers full-width Japanese characters too). */
+.CodeMirror.nnCaretInsert .CodeMirror-cursor{border-left:2px solid #000!important;border-right:0!important;background:transparent!important;width:0!important}
+.CodeMirror.nnCaretNormal .CodeMirror-cursor{border:0!important;background:rgba(29,78,216,.34)!important;box-sizing:border-box}
+.CodeMirror.nnCaretNormal.CodeMirror-focused .CodeMirror-cursor{background:rgba(29,78,216,.42)!important}
 .CodeMirror-selected{background:#d9d9d9!important}
 .CodeMirror-activeline-background{background:transparent!important}
 .cm-header{font-weight:750;color:CanvasText!important}
@@ -733,6 +738,33 @@ function updateVimUi(){
   b.classList.toggle('normal',label==='NORMAL');
   b.classList.toggle('visual',label.charAt(0)==='V');
   b.classList.toggle('insert',label==='INSERT');
+  try{
+    const w=editor.getWrapperElement();
+    w.classList.toggle('nnCaretNormal',label!=='INSERT');
+    w.classList.toggle('nnCaretInsert',label==='INSERT');
+  }catch(_){}
+  setTimeout(syncNormalCaret,0);
+}
+// The NORMAL/VISUAL block caret must cover a whole cell, including full-width
+// (Japanese) glyphs. CodeMirror only positions the caret; we size it here to
+// the real advance width of the character under it.
+function syncNormalCaret(){
+  try{
+    if(mode!=='source')return;
+    const v=editor.state&&editor.state.vim;
+    const wrap=editor.getWrapperElement();
+    const cursors=wrap.querySelectorAll('.CodeMirror-cursor');
+    if(!v||v.insertMode){cursors.forEach(el=>{el.style.width=''});return}
+    const cur=editor.getCursor(),ln=editor.getLine(cur.line)||'';
+    let w=editor.defaultCharWidth();
+    if(cur.ch<ln.length){
+      const a=editor.cursorCoords({line:cur.line,ch:cur.ch},'local');
+      const b=editor.cursorCoords({line:cur.line,ch:cur.ch+1},'local');
+      const d=b.left-a.left;
+      if(d>1&&d<80)w=d;
+    }
+    cursors.forEach(el=>{el.style.width=Math.max(3,Math.round(w))+'px'});
+  }catch(_){}
 }
 function bodyCursorMappedToSource(){
   const cur=bodyEditor.getCursor(),needle=bodyEditor.getLine(cur.line)||'';
@@ -818,6 +850,7 @@ editor.on('vim-mode-change',()=>{
   if(isSourceNormal()&&relationSyncPending&&mode==='source')flushAutosave(true).catch(console.error);
 });
 editor.on('focus',reconcileSourceInput);
+editor.on('cursorActivity',syncNormalCaret);
 editor.on('mousedown',()=>{
   // A click on the editor is the user's manual "let me type" gesture; make it
   // reliably recover a stuck input (this is what the double-click workaround did).
@@ -2040,6 +2073,10 @@ function registerVimLeaderCommands(){
     nnNoteFind:()=>openNotePicker(),
     nnOrganize:()=>{toggleViewMode().catch(console.error)},
     nnAttach:()=>{if(currentData?.can_edit)$('attachmentBtn').click()},
+    // i drops the insert caret AFTER the character the block cursor was on
+    // (its right edge), matching what the block visually covered — e.g. on the
+    // "3" of "123" you land after the 3, not between 2 and 3.
+    nnSmartInsert:cm=>{try{CodeMirror.Vim.handleKey(cm,'a')}catch(_){CodeMirror.Vim.handleKey(cm,'i')}},
     nnLinkNext:cm=>vimJumpLink(cm,1),
     nnLinkPrev:cm=>vimJumpLink(cm,-1),
     nnEnter:cm=>{if(!vimOpenCursorLink(cm))cm.execCommand('goLineDown');},
@@ -2053,6 +2090,7 @@ function registerVimLeaderCommands(){
   nmap('\\n','nnNewNode');nmap('\\p','nnEdgeOut');nmap('\\c','nnEdgeIn');nmap('\\d','nnDeleteNote');
   nmap('\\x','nnToggleTask');nmap('\\t','nnMakeTask');nmap('\\T','nnTable');nmap('\\e','nnEdgesDialog');
   nmap('\\y','nnCopyLink');nmap('\\f','nnNoteFind');nmap('\\o','nnOrganize');nmap('\\a','nnAttach');
+  nmap('i','nnSmartInsert');
 }
 $('vimIndicator').onclick=()=>{
   try{
@@ -2208,12 +2246,13 @@ function updateNewCombos(){
 }
 function setNewNodeType(v){
   newNodeTypeVal=v;
-  if(v==='__custom__'){updateNewCombos();dlgSetMode('insert',$('newNodeTypeCustom'));return}
+  // The relation auto-mirrors the attribute (value + free-text) until the user
+  // picks a relation themselves; after that it is left alone.
   if(!newRelationTouched){
-    const parentCat=currentData&&currentData.node_type==='カテゴリー';
-    if(parentCat)newRelationVal='カテゴリー';
-    else if(v)newRelationVal=v;            // 指定しない ('') leaves the relation alone
+    newRelationVal=v;
+    if(v==='__custom__')$('customRelation').value=$('newNodeTypeCustom').value;
   }
+  if(v==='__custom__'){updateNewCombos();dlgSetMode('insert',$('newNodeTypeCustom'));return}
   updateNewCombos();
 }
 function setNewRelation(v){
@@ -2251,7 +2290,10 @@ function openNewNodeDialog(){
 }
 $('newNodeTypeBtn').onclick=()=>dlgOpenPicker({title:'属性を選択（英数字キー / クリック）',entries:NODE_TYPE_CHOICES,current:newNodeTypeVal,onPick:setNewNodeType});
 $('newRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:RELATION_CHOICES,current:newRelationVal,onPick:setNewRelation});
-$('newNodeTypeCustom').addEventListener('input',updateNewCombos);
+$('newNodeTypeCustom').addEventListener('input',()=>{
+  if(!newRelationTouched&&newNodeTypeVal==='__custom__'){newRelationVal='__custom__';$('customRelation').value=$('newNodeTypeCustom').value}
+  updateNewCombos();
+});
 $('customRelation').addEventListener('input',updateNewCombos);
 function fillSelect(sel,items,emptyText){
   sel.innerHTML='';
