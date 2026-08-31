@@ -138,6 +138,10 @@ class NodeTypeSpaContractTests(unittest.TestCase):
         self.assertIn('u.path == "/api/edge-relabel"', src)
         self.assertIn('u.path == "/api/node-type"', src)
         self.assertIn("function relabelSelectedEdges(direction,relation)", src)
+        # modal (Esc/i + number) keyboard layer for the \\n / \\p / \\c popups
+        self.assertIn('data-vim-dialog', src)
+        self.assertIn("function activeVimDialog()", src)
+        self.assertIn("function dlgHandleDigit(dlg,n)", src)
 
 
 if __name__ == "__main__":
