@@ -123,7 +123,11 @@ button:hover{background:#f3f3f3}
 #graphWrap{flex:1;min-height:0;position:relative;background:#fff}
 #localGraph{display:block;width:100%;height:100%;min-height:240px;touch-action:none;user-select:none}.graphEdge{stroke:#a3a3a3;stroke-width:1.4;opacity:.82}.graphEdge.primary{stroke:#737373;stroke-width:2.25;opacity:1}.graphNode{cursor:pointer}.graphNode circle{fill:#000;stroke:#000;stroke-width:1.2}.graphNode.support circle{fill:#16a34a;stroke:#16a34a}.graphNode.oppose circle{fill:#dc2626;stroke:#dc2626}.graphNode.question circle{fill:#2563eb;stroke:#2563eb}.graphNode.answer circle{fill:#2563eb;stroke:#2563eb}.graphNode.derive circle{fill:#d97706;stroke:#d97706}.graphNode.related circle{fill:#737373;stroke:#737373}.graphNode.topic circle{fill:#7c3aed;stroke:#7c3aed}.graphNode.note circle{fill:#111827;stroke:#111827}.graphNode.summary circle{fill:#0891b2;stroke:#0891b2}.graphNode.current circle{fill:#000;stroke:#000;stroke-width:2.5}.graphNode text{fill:#000;pointer-events:none}.graphEdgeLabel{fill:#333;pointer-events:none;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}.graphHint{position:absolute;left:10px;bottom:8px;font-size:10px;color:var(--muted);pointer-events:none}
 #editorPane{display:flex;flex-direction:column;min-width:0;min-height:0;background:#fff}
-#docBar{display:flex;align-items:center;gap:4px;padding:0;min-width:0;flex:1 1 560px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;white-space:nowrap}#docBar::-webkit-scrollbar{display:none}#docBar button{padding:5px 7px;font-size:10.5px;line-height:1.1;flex:0 0 auto;white-space:nowrap}
+#docBar{display:flex;align-items:center;gap:4px;padding:0;min-width:0;flex:1 1 560px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;white-space:nowrap}#docBar::-webkit-scrollbar{display:none}#docBar button{padding:4px 7px;font-size:10.5px;line-height:1.1;flex:0 0 auto;white-space:nowrap;background:transparent;border:1px solid color-mix(in srgb,CanvasText 16%,transparent);color:CanvasText;border-radius:6px}
+#docBar button:hover{background:color-mix(in srgb,CanvasText 8%,transparent)}
+#docBar kbd{font:700 10px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:CanvasText;color:Canvas;border-radius:3px;padding:2px 4px;margin-right:5px}
+#docBar .kbdHint{display:inline-flex;align-items:center;font-size:10px;color:var(--muted);flex:0 0 auto;white-space:nowrap;padding:3px 5px;border:1px dashed color-mix(in srgb,CanvasText 20%,transparent);border-radius:6px}
+#docBar .kbdHint kbd{background:color-mix(in srgb,CanvasText 70%,transparent)}
 #fileTitle{display:none!important}
 .modeBtn.active{font-weight:700;border-color:#8f8f8f;background:#e5e5e5}
 .topicRating{display:flex;align-items:center;gap:6px;margin-right:6px}
@@ -389,20 +393,22 @@ header{
     <div id="authorBar"><span id="noteAuthorAvatar"></span><div class="authorText"><span id="noteAuthorName" class="authorName"></span><span id="noteAuthorHandle" class="authorHandle"></span></div><div class="authorMeta"><button id="likeBtn" type="button">♡ 0</button><button id="reportNoteBtn" type="button" style="display:none">通報</button></div></div>
     <div id="docBar">
       <div id="fileTitle">Index.md</div>
-      <button id="viewModeToggle" class="viewModeToggle" type="button" aria-label="整理ビューとソースを切替" title="Ctrl+E: 整理ビュー / ソース切替">整理ビュー</button>
-      <button id="helpBtn" type="button" title="キーボードショートカット (?)">?</button>
+      <button id="viewModeToggle" class="viewModeToggle" type="button" aria-label="整理ビューとソースを切替" title="i / \o / Ctrl+E で切替">整理ビュー</button>
       <button id="vimIndicator" class="vimIndicator insert" type="button" title="Esc: NORMAL / i: INSERT">VIM INSERT</button>
-      <button id="newRootBtn" class="guestWriteBtn" type="button">＋ ノートを作成</button>
-      <button id="contextActionBtn" title="Vim: em">移動・分類</button>
-      <button id="deleteCurrentBtn" type="button" style="display:none;border-color:#b91c1c" title="Vim: nd">削除</button>
-      <button id="copyLinkBtn" type="button">リンクをコピー</button>
+      <button id="newRootBtn" class="guestWriteBtn" type="button" title="Vim: \n"><kbd>\n</kbd>作成</button>
+      <span class="kbdHint"><kbd>\p</kbd>親 &nbsp;<kbd>\c</kbd>子</span>
+      <button id="contextActionBtn" title="Vim: \e — Childリンクをカテゴリーへ移動/追加"><kbd>\e</kbd>分類</button>
+      <button id="deleteCurrentBtn" type="button" style="display:none;border-color:#b91c1c" title="Vim: \d"><kbd>\d</kbd>削除</button>
+      <button id="copyLinkBtn" type="button" title="Vim: \y"><kbd>\y</kbd>リンク</button>
+      <span class="kbdHint"><kbd>\f</kbd>検索 &nbsp;<kbd>?</kbd>ヘルプ</span>
       <label id="uploadToggleWrap" class="uploadToggle" style="display:none"><input id="uploadToggle" type="checkbox" checked> Webへ</label>
       <button id="publicVersionBtn" type="button" style="display:none">公開版</button>
       <input id="imageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" hidden />
       <input id="attachmentInput" type="file" accept="image/*,application/pdf,text/plain,text/markdown,.md,.txt,.pdf" hidden />
-      <button id="attachmentBtn" type="button">添付</button>
-      <button id="taskBtn" type="button" title="チェックボックスを作る（Vim: nt / 切替: nx）">☑</button>
-      <button id="tableBtn" type="button" title="Markdownテーブルを挿入（Vim: mt）">表</button>
+      <button id="attachmentBtn" type="button" title="Vim: \a"><kbd>\a</kbd>添付</button>
+      <button id="taskBtn" type="button" title="チェックボックス（Vim: \t / 切替: \x）"><kbd>\t</kbd>☑</button>
+      <button id="tableBtn" type="button" title="Markdownテーブル（Vim: \T）"><kbd>\T</kbd>表</button>
+      <button id="helpBtn" type="button" title="キーボードショートカット (?)"><kbd>?</kbd>ヘルプ</button>
       <button id="shareCommunityBtn" type="button">コミュニティに共有</button>
     </div>
   </div>
@@ -1218,7 +1224,7 @@ function relIs(x,name){
 function outgoingOf(data,relation){return (data?.outgoing||[]).filter(e=>relIs(e.relation,relation))}
 function updateContextAction(){
   const b=$('contextActionBtn');if(!b)return;
-  b.textContent='移動・分類';b.title='Childリンクをカテゴリーへ移動/追加（Vim: em）';
+  b.innerHTML='<kbd>\\e</kbd>分類';b.title='Vim: \\e — Childリンクをカテゴリーへ移動/追加';
   b.style.display=currentData?'inline-block':'none';
   const del=$('deleteCurrentBtn');if(del)del.style.display=(currentData?.can_edit&&!currentData?.is_index)?'inline-block':'none';
 }
@@ -1805,9 +1811,9 @@ function renderTopicWidgets(){
 function renderConnections(d){}
 function updateViewModeToggle(){
   const b=$('viewModeToggle');if(!b)return;
-  b.textContent=mode==='source'?'ソース':'整理ビュー';
+  b.innerHTML=mode==='source'?'<kbd>\\o</kbd>整理へ':'<kbd>i</kbd>編集へ';
   b.setAttribute('aria-pressed',mode==='source'?'true':'false');
-  b.title='Ctrl+E: 整理ビュー / ソース切替';
+  b.title='i / \\o / Ctrl+E で切替';
 }
 function setModeVisibility(next){
   // v70 has only two user-facing modes: Organize and Source.
@@ -1994,6 +2000,8 @@ function registerVimLeaderCommands(){
     nnEdgesDialog:cm=>openOrganizeEdgesDialog(vimLinkFileAtCursor(cm)).catch(err=>status(err.message)),
     nnCopyLink:()=>copyCurrentNoteLink().catch(err=>status(err.message)),
     nnNoteFind:()=>openNotePicker(),
+    nnOrganize:()=>{switchMode('organize').catch(console.error)},
+    nnAttach:()=>{if(currentData?.can_edit)$('attachmentBtn').click()},
     nnLinkNext:cm=>vimJumpLink(cm,1),
     nnLinkPrev:cm=>vimJumpLink(cm,-1),
     nnEnter:cm=>{if(!vimOpenCursorLink(cm))cm.execCommand('goLineDown');},
@@ -2006,7 +2014,7 @@ function registerVimLeaderCommands(){
   // `\` leader.
   nmap('\\n','nnNewNode');nmap('\\p','nnEdgeOut');nmap('\\c','nnEdgeIn');nmap('\\d','nnDeleteNote');
   nmap('\\x','nnToggleTask');nmap('\\t','nnMakeTask');nmap('\\T','nnTable');nmap('\\e','nnEdgesDialog');
-  nmap('\\y','nnCopyLink');nmap('\\f','nnNoteFind');
+  nmap('\\y','nnCopyLink');nmap('\\f','nnNoteFind');nmap('\\o','nnOrganize');nmap('\\a','nnAttach');
 }
 $('vimIndicator').onclick=()=>{
   try{
@@ -2064,6 +2072,8 @@ window.addEventListener('keydown',e=>{
     if(e.key==='o'){e.preventDefault();showOtherEdgeNodes[editDir]=!showOtherEdgeNodes[editDir];localStorage.setItem(editDir==='outgoing'?'nnShowOtherOutgoing':'nnShowOtherIncoming',showOtherEdgeNodes[editDir]?'1':'0');renderOrganize();return}
     orgKeyPrefix='';
   }else if(plain){
+    // Vim-native: i / a / o start editing -> jump to Source (INSERT).
+    if(e.key==='i'||e.key==='a'||e.key==='o'){e.preventDefault();orgKeyPrefix='';switchMode('source').catch(console.error);return}
     if(e.key==='t'){e.preventDefault();orgKeyPrefix='t';status('属性の番号を押してください（1=論点 … 7=カテゴリー 8=ノード）');return}
     if(orgKeyPrefix==='t'&&/^[1-8]$/.test(e.key)){e.preventDefault();orgKeyPrefix='';const opt=NODE_TYPE_OPTIONS[Number(e.key)-1];if(opt&&currentData?.can_edit)saveNodeType(opt[0]);return}
     if(e.key==='p'){e.preventDefault();orgKeyPrefix='';openEdgeDialog('outgoing').catch(err=>status(err.message));return}
@@ -2319,8 +2329,10 @@ $('notePickDialog').addEventListener('close',()=>{const d=activeVimDialog();if(d
 
 // ---- always-available keyboard-shortcut reference ("?" key or the ? button) ----
 const SHORTCUTS_HTML=[
-  '<b>全体</b>',
-  'Ctrl+E : 整理ビュー ↔ ソース 切替',
+  '<b>ビュー切替（Vim風）</b>',
+  '整理ビューで  i / a / o  : ソースへ（編集開始）',
+  'ソース NORMAL で  \\o  : 整理ビューへ',
+  'Ctrl+E : 整理ビュー ↔ ソース（従来どおり）',
   'Ctrl+K : ノートを検索してジャンプ（どこからでも）',
   '? : このヘルプ',
   '',
@@ -2355,9 +2367,10 @@ window.addEventListener('keydown',e=>{
   const a=document.activeElement,tag=(a&&a.tagName)||'';
   if(tag==='INPUT'||tag==='TEXTAREA'||(a&&a.isContentEditable)||(a&&a.closest&&a.closest('.CodeMirror')))return;
   const openDlg=document.querySelector('dialog[open]');
-  if(openDlg&&openDlg.id!=='shortcutsDialog')return;
-  e.preventDefault();toggleShortcuts();
+  if(openDlg&&openDlg.id!=='shortcutsDialog'&&!openDlg.hasAttribute('data-vim-dialog'))return;
+  e.preventDefault();e.stopPropagation();toggleShortcuts();
 },true);
+$('shortcutsDialog').addEventListener('close',()=>{const d=activeVimDialog();if(d)try{d.focus()}catch(_){}});
 
 // ---- edge dialog: relation + a target chosen through the search palette ----
 let edgeTargetFile='';
