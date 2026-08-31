@@ -69,6 +69,13 @@ RELATION_LINK_LINE_RE = re.compile(r'^\s*([^:\n][^:\n]{0,79}?)::\s*\[((?:\\.|[^\
 MARKDOWN_LINK_RE = re.compile(r'\[((?:\\.|[^\]\\])+)\]\(([^)\s]+\.md)(?:\s+"(label-fixed)")?\)')
 DIRECTION_DIVIDER_RE = re.compile(r'^\s*---\s*$')
 
+# A node's own kind/role. Stored as an optional ``node_type:`` line inside the
+# YAML frontmatter. It is intentionally independent from Parent/Child relation
+# labels: what a note *is* has nothing to do with how it *connects* to others.
+# The absence of the line means "unspecified" (指定なし); it is never written.
+NODE_TYPES = ("論点", "見解", "支持", "反対", "補足", "まとめ", "カテゴリー")
+NODE_TYPE_LINE_RE = re.compile(r"^\s*node_type\s*:\s*(.*?)\s*$", re.IGNORECASE)
+
 HTML = r'''<!doctype html>
 <html lang="ja">
 <head>
@@ -439,8 +446,19 @@ header{
 <dialog id="newDialog"><form method="dialog" id="newForm">
 <h3 style="margin:0">ノードを追加</h3>
 <label>タイトル<input id="newTitle" required /></label>
+<label>属性<select id="newNodeType">
+  <option value="">指定なし</option>
+  <option value="論点">論点</option>
+  <option value="見解">見解</option>
+  <option value="支持">支持</option>
+  <option value="反対">反対</option>
+  <option value="補足">補足</option>
+  <option value="まとめ">まとめ</option>
+  <option value="カテゴリー">カテゴリー</option>
+</select></label>
+<div style="font-size:11px;opacity:.7;margin:-3px 0 4px">属性はこのノート自身の種類です（YAML の node_type に保存）。関係とは別です。</div>
 <div>
-  <div style="font-size:13px;margin-bottom:7px">現在のページとの関係</div>
+  <div style="font-size:13px;margin-bottom:7px">開いていたノートとの関係</div>
   <div id="relationChoices" class="relationChoices"></div>
 </div>
 <label id="customRelationWrap" style="display:none">その他の関係<input id="customRelation" placeholder="関係名" /></label>
@@ -1950,6 +1968,9 @@ $('deleteNotesConfirm').onclick=async()=>{
 };
 $('nodeSort').addEventListener('change',renderFiles);
 const BASE_RELATIONS=['カテゴリー','ノート','賛同','否定','質問','回答','関連','言及','雑談'];
+// Relation choices offered when creating a Child note from the open note.
+// Independent from the new note's own 属性 (node_type).
+const NEW_NOTE_RELATIONS=['論点','見解','支持','反対','補足','まとめ','カテゴリー','関連','分割','無記'];
 let selectedRelation='カテゴリー';
 function pageRelations(){
   const out=[];
@@ -1968,6 +1989,9 @@ function chooseRelation(name){
 async function startNewRootNote(){
   if(!requireAuth('自分のノートを書くにはログインまたは新規登録してください',()=>startNewRootNote()))return;
   showNetwork();
+  // When an editable note is open, the new note is created as its Child.
+  // Otherwise fall back to creating a note under the user's own Index.
+  if(current&&currentData?.can_edit&&!isGuest()){openNewNodeDialog();return}
   if(!profile?.index_file){status('自分のIndexが見つかりません');return}
   if(current!==profile.index_file)await openFile(profile.index_file,{record:false});
   openNewNodeDialog();
@@ -1975,7 +1999,7 @@ async function startNewRootNote(){
 function openNewNodeDialog(){
   if(isGuest()){showAuth('自分のノートを書くにはログインまたは新規登録してください',()=>startNewRootNote());return}
   if(!currentData?.can_edit){status('新しいノードは自分のノートから作成してください');return}
-  $('newTitle').value='';$('customRelation').value='';
+  $('newTitle').value='';$('customRelation').value='';$('newNodeType').value='';
   renderRelationChoices();
   $('newDialog').showModal();
   setTimeout(()=>$('newTitle').focus(),0);
@@ -1983,7 +2007,7 @@ function openNewNodeDialog(){
 function renderRelationChoices(){
   const root=$('relationChoices');root.innerHTML='';
   const page=new Set(pageRelations());
-  const names=[...BASE_RELATIONS];if(profile?.local_mode)names.push('公開版');
+  const names=[...NEW_NOTE_RELATIONS];
   // Legacy/custom relations already present on the page remain selectable,
   // while the default vocabulary stays intentionally small and predictable.
   for(const name of page){if(!names.includes(name))names.push(name)}
@@ -1991,7 +2015,7 @@ function renderRelationChoices(){
     const b=document.createElement('button');b.type='button';b.className='relationChoice'+(page.has(name)?' pageItem':'');b.dataset.relation=name;b.textContent=name;b.onclick=()=>chooseRelation(name);root.appendChild(b);
   }
   const other=document.createElement('button');other.type='button';other.className='relationChoice';other.dataset.relation='__custom__';other.textContent='＋ その他';other.onclick=()=>chooseRelation('__custom__');root.appendChild(other);
-  chooseRelation(names[0]);
+  chooseRelation(names.includes('カテゴリー')?'カテゴリー':names[0]);
 }
 function fillSelect(sel,items,emptyText){
   sel.innerHTML='';
@@ -2431,7 +2455,7 @@ $('graphRelationLabels').checked=graphShowRelationLabels;$('graphRelationLabelsV
 function updateGraphControlsVisibility(){const box=$('graphControls'),btn=$('graphControlsToggle');if(!box||!btn)return;box.classList.toggle('collapsed',graphControlsCollapsed);btn.textContent=graphControlsCollapsed?'パラメータを表示':'隠す';btn.setAttribute('aria-expanded',graphControlsCollapsed?'false':'true')}
 $('graphControlsToggle').onclick=()=>{graphControlsCollapsed=!graphControlsCollapsed;localStorage.setItem('nnGraphControlsCollapsed',graphControlsCollapsed?'1':'0');updateGraphControlsVisibility();setTimeout(()=>queueGraph(80),0)};updateGraphControlsVisibility();
 new ResizeObserver(()=>queueGraph(120)).observe($('graphWrap'));
-$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();const relation=selectedRelation==='__custom__'?$('customRelation').value.trim():selectedRelation;if(!title||!relation)return;if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
+$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();const relation=selectedRelation==='__custom__'?$('customRelation').value.trim():selectedRelation;const node_type=$('newNodeType').value;if(!title||!relation)return;if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
 window.addEventListener('beforeunload',()=>{if(!isGuest()&&(dirty||relationSyncPending)){const blob=new Blob([JSON.stringify({name:current,content:editorText(),voter:voterId,commit_relations:true,client_save_session:saveClientSession,client_seq:editRevision})],{type:'application/json'});navigator.sendBeacon('/api/file',blob)}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flushAutosave().catch(()=>{})});
 boot().catch(e=>{status(e.message,{kind:'error'});if(!runtimeLocalMode)showAuth(e.message)});
@@ -2786,6 +2810,56 @@ def set_updated_frontmatter(content: str, value: str | None = None) -> str:
                               if re.match(r"^\s*created\s*:\s*", lines[i], re.IGNORECASE)),
                              len(lines) - 2)
         lines.insert(created_index + 1, f"updated: {stamp}")
+    return "\n".join(lines).rstrip() + "\n\n" + body.lstrip("\n")
+
+
+def normalized_node_type(value: str) -> str:
+    """Return a recognized node_type, or "" for unspecified / unknown values.
+
+    ``指定なし`` and any label outside :data:`NODE_TYPES` are treated as
+    unspecified. Unknown values are dropped rather than rejected so hand-edited
+    Markdown never fails to load.
+    """
+    v = str(value or "").strip().strip('"\'')
+    return v if v in NODE_TYPES else ""
+
+
+def node_type_of(content: str) -> str:
+    """Read the note's own ``node_type`` from YAML frontmatter (``""`` if none)."""
+    frontmatter, _body = split_yaml_frontmatter(content)
+    if not frontmatter:
+        return ""
+    for line in frontmatter.splitlines()[1:-1]:
+        m = NODE_TYPE_LINE_RE.match(line)
+        if m:
+            return normalized_node_type(m.group(1))
+    return ""
+
+
+def set_node_type_frontmatter(content: str, value: str) -> str:
+    """Insert, replace or remove the ``node_type`` line inside YAML frontmatter.
+
+    ``creator``/``created``/``updated`` are never touched. An empty or
+    unspecified value removes the line entirely instead of writing
+    ``node_type: 指定なし``. Notes without frontmatter are returned unchanged.
+    """
+    desired = normalized_node_type(value)
+    frontmatter, body = split_yaml_frontmatter(content)
+    if not frontmatter:
+        return content
+    lines = frontmatter.splitlines()
+    idx = next((i for i in range(1, len(lines) - 1)
+                if NODE_TYPE_LINE_RE.match(lines[i])), None)
+    if desired:
+        new_line = f"node_type: {desired}"
+        if idx is not None:
+            lines[idx] = new_line
+        else:
+            lines.insert(len(lines) - 1, new_line)
+    elif idx is not None:
+        del lines[idx]
+    else:
+        return content
     return "\n".join(lines).rstrip() + "\n\n" + body.lstrip("\n")
 
 
@@ -3262,10 +3336,12 @@ def migrate_created_frontmatter_to_iso_offset() -> None:
             write_file(name, "\n".join(lines).rstrip() + "\n\n" + body.lstrip("\n"))
 
 
-def new_note_markdown(filename: str, title: str) -> str:
+def new_note_markdown(filename: str, title: str, node_type: str = "") -> str:
     created = local_now_iso()
     creator = inferred_creator_username(filename)
-    return f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\n---\n\n# {title}\n"
+    nt = normalized_node_type(node_type)
+    nt_line = f"node_type: {nt}\n" if nt else ""
+    return f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\n{nt_line}---\n\n# {title}\n"
 
 
 def new_timestamp_filename() -> str:
@@ -3637,6 +3713,7 @@ def file_payload(name: str, voter: str | None = None):
         "name": name,
         "title": title,
         "content": content,
+        "node_type": node_type_of(content),
         "outgoing": outgoing,
         "incoming": incoming,
         "metrics": metrics,
@@ -6676,7 +6753,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not can_create_child_from(uid,source):
                     raise PermissionError("このノートから新規ノードを作成できません")
                 title = str(body["title"]).strip()
-                relation = str(body["relation"]).strip()
+                relation = str(body["relation"]).strip()[:80]
+                # The new note's own kind. Independent from the relation below:
+                # unknown / 指定なし values are dropped, never rejected.
+                node_type = normalized_node_type(body.get("node_type", ""))
                 if not title or not relation:
                     raise ValueError("title and relation are required")
                 check_and_record_rate(uid, "note_create")
@@ -6685,7 +6765,7 @@ class Handler(BaseHTTPRequestHandler):
                 # New nodes are children of the page they were created from.
                 # Canonical Parent edge lives above ``---`` in the new node;
                 # the source page's Child side is rebuilt automatically.
-                new_content = add_link_to_relation_side(new_note_markdown(filename, title), relation, source_title, source, "parent")
+                new_content = add_link_to_relation_side(new_note_markdown(filename, title, node_type), relation, source_title, source, "parent")
                 enforce_note_write_quota(uid, filename, new_content)
                 write_file(filename, new_content)
                 sync_edges(); schedule_local_publish(uid)
