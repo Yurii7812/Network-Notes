@@ -74,7 +74,7 @@ DIRECTION_DIVIDER_RE = re.compile(r'^\s*---\s*$')
 # labels: what a note *is* has nothing to do with how it *connects* to others.
 # The absence of the line means "unspecified" (指定なし); it is never written.
 NODE_TYPES = ("論点", "見解", "支持", "反対", "補足", "まとめ", "カテゴリー")
-NODE_TYPE_LINE_RE = re.compile(r"^\s*node_type\s*:\s*(.*?)\s*$", re.IGNORECASE)
+NODE_TYPE_LINE_RE = re.compile(r"^\s*(?:file_type|node_type)\s*:\s*(.*?)\s*$", re.IGNORECASE)
 
 HTML = r'''<!doctype html>
 <html lang="ja">
@@ -552,6 +552,7 @@ let edgeExpandedGroups={outgoing:new Set(),incoming:new Set()};
 let edgeExpandAll={outgoing:false,incoming:false};
 // Ordered edge keys (as shown, editable only) for digit selection in edit mode.
 let edgeEditOrder={outgoing:[],incoming:[]};
+let childByAttr=(function(){try{return localStorage.getItem('nnChildByAttr')==='1'}catch(_){return false}})();
 // One-shot key prefix: 't' then a digit picks a node_type; 'r' then a digit
 // picks a relation for the selected edges. Cleared after the next key.
 let orgKeyPrefix='';
@@ -1310,6 +1311,13 @@ function relationGroups(edges){
   for(const e of (edges||[])){const k=String(e.relation||'関連').trim()||'関連';if(!map.has(k))map.set(k,[]);map.get(k).push({...e,label:e.title||e.file,file:e.file,relation:k,private:!!e.private})}
   return [...map.entries()];
 }
+// Group child edges by the target note's own file_type (属性別表示).
+function fileTypeGroups(edges){
+  const order=['論点','見解','支持','反対','補足','まとめ','カテゴリー','ノード'];
+  const map=new Map();
+  for(const e of (edges||[])){const k=nodeTypeLabel(e.node_type);if(!map.has(k))map.set(k,[]);map.get(k).push({...e,label:e.title||e.file,file:e.file,relation:e.relation,private:!!e.private})}
+  return [...map.entries()].sort((a,b)=>{const ia=order.indexOf(a[0]),ib=order.indexOf(b[0]);return (ia<0?99:ia)-(ib<0?99:ib)});
+}
 function edgeKey(relation,file){return String(relation||'')+'\u0000'+String(file||'')}
 function edgeStatsHtml(li,relation,direction){
   const m=metric(li.file),isTopic=relIs(relation,'トピック');
@@ -1403,11 +1411,15 @@ function renderEdgeZone(root,direction){
     cb.onchange=()=>{showOtherEdgeNodes[direction]=cb.checked;localStorage.setItem(direction==='outgoing'?'nnShowOtherOutgoing':'nnShowOtherIncoming',cb.checked?'1':'0');renderEditEdges();if(mode==='organize')renderOrganize()};
     lab.appendChild(cb);lab.appendChild(document.createTextNode('他の人のノードを表示'));zh.appendChild(lab);
   }
+  // A category note's Child list can be regrouped by the child's own file_type.
+  const catChild=direction==='incoming'&&currentData&&currentData.node_type==='カテゴリー';
+  const attrView=catChild&&childByAttr;
+  if(attrView)edgeEditMode[direction]=false;
   const canAdd=!!profile?.id;
   const editableCount=rawEdges.reduce((n,e)=>n+(canEditEdgeItem(direction,e)?1:0),0);
   if(!edgeEditMode[direction]){
-    if(canAdd){const add=document.createElement('button');add.type='button';add.textContent='＋';add.title=outgoing?'Parentとの関係を追加（他人のノートにも追加可）':'Childとの関係を追加';add.onclick=()=>openEdgeDialog(direction);zh.appendChild(add)}
-    if(editableCount){const edit=document.createElement('button');edit.type='button';edit.textContent='編集';edit.title='自分が作成した関係を編集';edit.onclick=()=>toggleEdgeEdit(direction);zh.appendChild(edit)}
+    if(canAdd&&!attrView){const add=document.createElement('button');add.type='button';add.textContent='＋';add.title=outgoing?'Parentとの関係を追加（他人のノートにも追加可）':'Childとの関係を追加';add.onclick=()=>openEdgeDialog(direction);zh.appendChild(add)}
+    if(editableCount&&!attrView){const edit=document.createElement('button');edit.type='button';edit.textContent='編集';edit.title='自分が作成した関係を編集';edit.onclick=()=>toggleEdgeEdit(direction);zh.appendChild(edit)}
     if(rawEdges.length){const all=document.createElement('button');all.type='button';all.className='edgeZoneExpandAll';all.textContent=edgeExpandAll[direction]?'折りたたむ':'すべて展開';all.onclick=()=>{edgeExpandAll[direction]=!edgeExpandAll[direction];if(!edgeExpandAll[direction])edgeExpandedGroups[direction].clear();renderEditEdges();if(mode==='organize')renderOrganize()};zh.appendChild(all)}
   }else{
     zone.classList.add('edgeZoneEditing');
@@ -1429,7 +1441,13 @@ function renderEdgeZone(root,direction){
     zone.appendChild(legend);
   }
   const edges=rawEdges.filter(e=>showOtherEdgeNodes[direction]||ownEdge(e));
-  const groups=relationGroups(edges);
+  let groups;
+  if(attrView){
+    groups=fileTypeGroups(edges);
+  }else{
+    groups=relationGroups(edges);
+    if(catChild){const rk=r=>relIs(r,'カテゴリー')?0:(relIs(r,'ノート')?1:2);groups.sort((a,b)=>rk(a[0])-rk(b[0]))}
+  }
   if(!groups.length){const em=document.createElement('div');em.className='edgeEmpty';em.textContent=rawEdges.length?'他の人のノードは非表示です':'エッジ関係はまだありません';zone.appendChild(em)}
   for(const [relation,itemsRaw] of groups){
     const block=document.createElement('section');block.className='previewSection edgeGroup';block.dataset.headingLevel='2';
@@ -1534,7 +1552,7 @@ function relColor(r){
 // "node_type:" in a muted label, then the value in its colour.
 function typeBadgeHtml(v){
   const col=typeColor(v)||'#e6e6e6';
-  return '<span style="color:var(--muted);font-size:10px;font-weight:400">node_type:</span> '
+  return '<span style="color:var(--muted);font-size:10px;font-weight:400">file_type:</span> '
        +'<span style="background:'+col+';color:#1a1a1a;border-radius:4px;padding:1px 7px;font-weight:700;font-size:12px">'+escapeHtml(nodeTypeLabel(v))+'</span>';
 }
 function typeMiniHtml(v){
@@ -1556,6 +1574,13 @@ function renderNodeTypeRow(root,{hint=false}={}){
   const row=document.createElement('div');row.className='nodeTypeRow';
   row.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px;font-size:12px';
   const lab=document.createElement('span');lab.innerHTML=typeBadgeHtml(currentData.node_type);row.appendChild(lab);
+  if(currentData.node_type==='カテゴリー'){
+    const t=document.createElement('label');t.style.cssText='display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:400';
+    const cb=document.createElement('input');cb.type='checkbox';cb.checked=childByAttr;cb.tabIndex=-1;
+    cb.onchange=()=>{childByAttr=cb.checked;try{localStorage.setItem('nnChildByAttr',childByAttr?'1':'0')}catch(_){}renderEditEdges();if(mode==='organize')renderOrganize()};
+    t.appendChild(cb);t.appendChild(document.createTextNode('子を属性別に表示'));
+    row.appendChild(t);
+  }
   if(hint&&currentData.can_edit){
     const h=document.createElement('span');h.style.cssText='color:var(--muted);font-weight:400;font-size:11px';
     h.textContent='t → 数字 : 属性を変更 ／ p 親追加 ／ c 子追加 ／ P・C 関係編集（t/r → 数字で一括）';
@@ -2302,14 +2327,20 @@ function updateNewCombos(){
   $('newNodeTypeCustomWrap').style.display=newNodeTypeVal==='__custom__'?'grid':'none';
   $('customRelationWrap').style.display=newRelationVal==='__custom__'?'grid':'none';
 }
+// Under a カテゴリー note or the Index, a child's relation can only be
+// カテゴリー (a sub-category) or ノート (a plain note in it).
+function newParentRestricted(){return !!(currentData&&(currentData.is_index||currentData.node_type==='カテゴリー'))}
+const RESTRICTED_RELATION_CHOICES=[{value:'カテゴリー',label:'カテゴリー'},{value:'ノート',label:'ノート'}];
+function newRelationChoices(){return newParentRestricted()?RESTRICTED_RELATION_CHOICES:RELATION_CHOICES}
 function setNewNodeType(v){
   newNodeTypeVal=v;
   // The relation auto-mirrors the attribute (value + free-text) until the user
   // picks a relation themselves; after that it is left alone.
   if(!newRelationTouched){
-    // Relation can't be "none": if 属性 is 選択しない, leave the relation as-is.
-    if(v==='__custom__'){newRelationVal='__custom__';$('customRelation').value=$('newNodeTypeCustom').value}
-    else if(v)newRelationVal=v;
+    if(newParentRestricted()){
+      newRelationVal=(v==='カテゴリー')?'カテゴリー':'ノート';
+    }else if(v==='__custom__'){newRelationVal='__custom__';$('customRelation').value=$('newNodeTypeCustom').value}
+    else if(v)newRelationVal=v;   // 選択しない ('') leaves the relation as-is
   }
   if(v==='__custom__'){updateNewCombos();dlgSetMode('insert',$('newNodeTypeCustom'));return}
   updateNewCombos();
@@ -2342,13 +2373,13 @@ function openNewNodeDialog(){
   if(!currentData?.can_edit){status('新しいノードは自分のノートから作成してください');return}
   $('newTitle').value='';$('customRelation').value='';$('newNodeTypeCustom').value='';
   newNodeTypeVal='';newRelationTouched=false;
-  newRelationVal=(currentData&&currentData.node_type==='カテゴリー')?'カテゴリー':'関連';
+  newRelationVal=newParentRestricted()?'カテゴリー':'関連';
   updateNewCombos();
   $('newDialog').showModal();
   setTimeout(()=>dlgSetMode('normal'),0);
 }
 $('newNodeTypeBtn').onclick=()=>dlgOpenPicker({title:'属性を選択（英数字キー / クリック）',entries:NODE_TYPE_CHOICES,current:newNodeTypeVal,onPick:setNewNodeType});
-$('newRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:RELATION_CHOICES,current:newRelationVal,onPick:setNewRelation});
+$('newRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:newRelationChoices(),current:newRelationVal,onPick:setNewRelation});
 $('newNodeTypeCustom').addEventListener('input',()=>{
   if(!newRelationTouched&&newNodeTypeVal==='__custom__'){newRelationVal='__custom__';$('customRelation').value=$('newNodeTypeCustom').value}
   updateNewCombos();
@@ -3463,7 +3494,7 @@ def set_node_type_frontmatter(content: str, value: str) -> str:
     lines = frontmatter.splitlines()
     idx = next((i for i in range(1, len(lines) - 1)
                 if NODE_TYPE_LINE_RE.match(lines[i])), None)
-    new_line = f"node_type: {desired}"
+    new_line = f"file_type: {desired}"
     if idx is not None:
         lines[idx] = new_line
     else:
@@ -3853,6 +3884,10 @@ def ensure_creator_metadata(name: str, content: str) -> str:
                 continue
             if re.match(r"^\s*created\s*:\s*", line, re.IGNORECASE):
                 continue
+            # Rename the legacy key on every save: node_type -> file_type.
+            m_ft = re.match(r"^(\s*)node_type(\s*:\s*.*)$", line, re.IGNORECASE)
+            if m_ft:
+                line = m_ft.group(1) + "file_type" + m_ft.group(2)
             other_meta.append(line)
     meta = ["---", f"creator::{creator}", f"created: {created}"]
     meta.extend(other_meta)
@@ -3948,7 +3983,7 @@ def new_note_markdown(filename: str, title: str, node_type: str = "") -> str:
     created = local_now_iso()
     creator = inferred_creator_username(filename)
     nt = normalized_node_type(node_type) or "null"
-    return f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\nnode_type: {nt}\n---\n\n# {title}\n"
+    return f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\nfile_type: {nt}\n---\n\n# {title}\n"
 
 
 def new_timestamp_filename() -> str:

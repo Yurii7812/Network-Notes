@@ -57,7 +57,7 @@ class NodeTypeFrontmatterTests(unittest.TestCase):
     # --- writing ---------------------------------------------------------
     def test_new_note_markdown_embeds_node_type_and_keeps_core_metadata(self):
         text = self.m.new_note_markdown("alice__20260101000000.md", "見解ノート", "見解")
-        self.assertIn("node_type: 見解", text)
+        self.assertIn("file_type: 見解", text)
         self.assertIn("creator::alice", text)
         self.assertRegex(text, r"(?m)^created: .+$")
         self.assertRegex(text, r"(?m)^updated: .+$")
@@ -66,7 +66,7 @@ class NodeTypeFrontmatterTests(unittest.TestCase):
     def test_new_note_markdown_writes_null_when_unspecified(self):
         for value in ("", "指定なし", "指定しない", "null"):
             text = self.m.new_note_markdown("alice__20260101000000.md", "T", value)
-            self.assertIn("node_type: null", text)
+            self.assertIn("file_type: null", text)
             self.assertEqual(self.m.node_type_of(text), "")
 
     def test_new_note_markdown_keeps_a_custom_node_type(self):
