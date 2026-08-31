@@ -104,6 +104,25 @@ class NodeTypeFrontmatterTests(unittest.TestCase):
         self.assertEqual(self.m.node_type_of(text), "論点")
         self.assertIn("分割::[元ノート](alice__A.md)", text)
 
+    # --- relation relabel -------------------------------------------------
+    def test_relabel_exact_edge_changes_only_the_matching_edge(self):
+        text = self.m.new_note_markdown("alice__20260101040404.md", "案", "見解")
+        text = self.m.add_link_to_relation_side(text, "関連", "A", "alice__A.md", "parent")
+        text = self.m.add_link_to_relation_side(text, "関連", "B", "alice__B.md", "parent")
+        out = self.m.relabel_exact_edge(text, "関連", "alice__A.md", "支持")
+        edges = {(r, t) for r, _l, t in self.m.parse_outgoing(out)}
+        self.assertIn(("支持", "alice__A.md"), edges)
+        self.assertIn(("関連", "alice__B.md"), edges)
+        # node_type is untouched by an edge relabel
+        self.assertEqual(self.m.node_type_of(out), "見解")
+
+    def test_relabel_exact_edge_no_match_returns_input(self):
+        text = self.m.add_link_to_relation_side(
+            self.m.new_note_markdown("alice__20260101050505.md", "案", ""),
+            "関連", "A", "alice__A.md", "parent",
+        )
+        self.assertEqual(self.m.relabel_exact_edge(text, "分割", "alice__A.md", "支持"), text)
+
 
 class NodeTypeSpaContractTests(unittest.TestCase):
     def test_spa_exposes_node_type_selector_and_relation_list(self):
@@ -112,6 +131,12 @@ class NodeTypeSpaContractTests(unittest.TestCase):
         self.assertIn("const NEW_NOTE_RELATIONS=", src)
         self.assertIn('"node_type": node_type_of(content)', src)
         self.assertIn("new_note_markdown(filename, title, node_type)", src)
+        # unspecified node_type reads as "ノード", never inferred from relations
+        self.assertIn("function nodeTypeLabel(v){return String(v||'')||'ノード'}", src)
+        # keyboard-first edge editing endpoints
+        self.assertIn('u.path == "/api/edge-relabel"', src)
+        self.assertIn('u.path == "/api/node-type"', src)
+        self.assertIn("function relabelSelectedEdges(direction,relation)", src)
 
 
 if __name__ == "__main__":

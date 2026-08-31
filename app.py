@@ -447,7 +447,6 @@ header{
 <h3 style="margin:0">ノードを追加</h3>
 <label>タイトル<input id="newTitle" required /></label>
 <label>属性<select id="newNodeType">
-  <option value="">指定なし</option>
   <option value="論点">論点</option>
   <option value="見解">見解</option>
   <option value="支持">支持</option>
@@ -455,6 +454,7 @@ header{
   <option value="補足">補足</option>
   <option value="まとめ">まとめ</option>
   <option value="カテゴリー">カテゴリー</option>
+  <option value="">指定なし</option>
 </select></label>
 <div style="font-size:11px;opacity:.7;margin:-3px 0 4px">属性はこのノート自身の種類です（YAML の node_type に保存）。関係とは別です。</div>
 <div>
@@ -541,6 +541,11 @@ let selectedEdgeKeys={outgoing:new Set(),incoming:new Set()};
 let showOtherEdgeNodes={outgoing:localStorage.getItem('nnShowOtherOutgoing')!=='0',incoming:localStorage.getItem('nnShowOtherIncoming')!=='0'};
 let edgeExpandedGroups={outgoing:new Set(),incoming:new Set()};
 let edgeExpandAll={outgoing:false,incoming:false};
+// Ordered edge keys (as shown, editable only) for digit selection in edit mode.
+let edgeEditOrder={outgoing:[],incoming:[]};
+// One-shot key prefix: 't' then a digit picks a node_type; 'r' then a digit
+// picks a relation for the selected edges. Cleared after the next key.
+let orgKeyPrefix='';
 const EDGE_GROUP_PREVIEW={outgoing:4,incoming:5};
 let organizeEdgePrefillFile='';
 let searchState={q:'',scope:'all',community_id:0,user_id:0};
@@ -1244,10 +1249,39 @@ function canEditEdgeItem(direction,li){
   const a=authorFor(li.file);return Number(a?.id||0)===Number(profile.id);
 }
 function updateEdgeDeleteButton(direction,zone){
-  const b=zone?.querySelector('[data-edge-delete="'+direction+'"]');if(!b)return;
-  const n=selectedEdgeKeys[direction].size;b.textContent='削除'+(n?' ('+n+')':'');b.disabled=!n;
+  const n=selectedEdgeKeys[direction].size;
+  const b=zone?.querySelector('[data-edge-delete="'+direction+'"]');
+  if(b){b.textContent='削除'+(n?' ('+n+')':'');b.disabled=!n}
+  const r=zone?.querySelector('[data-edge-relabel-btn="'+direction+'"]');
+  if(r){r.textContent='関係を変更'+(n?' ('+n+')':'');r.disabled=!n}
 }
-function toggleEdgeEdit(direction){edgeEditMode[direction]=!edgeEditMode[direction];selectedEdgeKeys[direction].clear();renderEditEdges();if(mode==='organize')renderOrganize()}
+function focusFirstEdgeEditControl(){
+  setTimeout(()=>{
+    const scope=mode==='organize'?$('organizeView'):document;
+    const z=scope&&scope.querySelector('.edgeZoneEditing');
+    z&&z.querySelector('.edgeSelect,[data-edge-relabel-btn],[data-edge-edit-done]')?.focus?.({preventScroll:true});
+  },0);
+}
+function toggleEdgeEdit(direction){
+  edgeEditMode[direction]=!edgeEditMode[direction];selectedEdgeKeys[direction].clear();
+  renderEditEdges();if(mode==='organize')renderOrganize();
+  if(edgeEditMode[direction])focusFirstEdgeEditControl();
+}
+async function relabelSelectedEdges(direction,relation){
+  const keys=[...selectedEdgeKeys[direction]];
+  if(!keys.length){status('変更するエッジを選択してください');return}
+  relation=String(relation||'').trim();
+  if(!relation){status('関係名を選択してください');return}
+  const edges=keys.map(k=>{const p=k.split('\u0000');const ext=(p[2]||'').startsWith('ext:');return{relation:p[0],file:p[1],edge_kind:ext?'external':'owner',edge_id:ext?Number(p[2].slice(4)):0}});
+  try{
+    await flushAutosave();
+    const d=await api('/api/edge-relabel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({direction,current,relation,edges})});
+    currentData=d;setEditorsFromRaw(d.content);dirty=false;
+    selectedEdgeKeys[direction].clear();edgeEditMode[direction]=false;
+    await refreshFiles();queueGraph();renderEditEdges();if(mode==='organize')renderOrganize();
+    status((d.relabeled||edges.length)+'件の関係を「'+relation+'」に変更しました');
+  }catch(err){status(err.message)}
+}
 async function toggleEdgePrivacy(sourceNote,targetNote,makePrivate){
   try{
     await api('/api/note-publish-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:sourceNote,target:targetNote,private:makePrivate})});
@@ -1288,10 +1322,24 @@ function renderEdgeZone(root,direction){
     if(editableCount){const edit=document.createElement('button');edit.type='button';edit.textContent='編集';edit.title='自分が作成した関係を編集';edit.onclick=()=>toggleEdgeEdit(direction);zh.appendChild(edit)}
     if(rawEdges.length){const all=document.createElement('button');all.type='button';all.className='edgeZoneExpandAll';all.textContent=edgeExpandAll[direction]?'折りたたむ':'すべて展開';all.onclick=()=>{edgeExpandAll[direction]=!edgeExpandAll[direction];if(!edgeExpandAll[direction])edgeExpandedGroups[direction].clear();renderEditEdges();if(mode==='organize')renderOrganize()};zh.appendChild(all)}
   }else{
+    zone.classList.add('edgeZoneEditing');
+    const relNames=[...NEW_NOTE_RELATIONS];
+    for(const [r] of relationGroups(rawEdges))if(r&&!relNames.includes(r))relNames.push(r);
+    const rl=document.createElement('select');rl.className='edgeRelabelSelect';rl.setAttribute('aria-label','変更後の関係');rl.style.cssText='font-size:11px;padding:2px 4px;max-width:8em';
+    for(const n of relNames){const o=document.createElement('option');o.value=n;o.textContent=n;rl.appendChild(o)}
+    zh.appendChild(rl);
+    const rb=document.createElement('button');rb.type='button';rb.dataset.edgeRelabelBtn=direction;rb.textContent='関係を変更';rb.disabled=true;rb.onclick=()=>relabelSelectedEdges(direction,rl.value);zh.appendChild(rb);
     const del=document.createElement('button');del.type='button';del.className='edgeDeleteBtn';del.dataset.edgeDelete=direction;del.textContent='削除';del.disabled=true;del.onclick=()=>deleteSelectedEdges(direction);zh.appendChild(del);
-    const done=document.createElement('button');done.type='button';done.textContent='完了';done.onclick=()=>toggleEdgeEdit(direction);zh.appendChild(done);
+    const done=document.createElement('button');done.type='button';done.dataset.edgeEditDone=direction;done.textContent='完了';done.onclick=()=>toggleEdgeEdit(direction);zh.appendChild(done);
   }
   zone.appendChild(zh);
+  if(edgeEditMode[direction]){
+    edgeEditOrder[direction]=[];
+    const legend=document.createElement('div');legend.className='edgeEditLegend';
+    legend.style.cssText='font-size:10.5px;color:var(--muted);line-height:1.7;margin:2px 0 4px';
+    legend.textContent='数字: 行を選択 ／ a: 全選択 ／ s: 解除 ／ r+数字: 関係を変更 ／ d: 削除 ／ Esc: 終了  ｜ '+NEW_NOTE_RELATIONS.map((r,i)=>'['+((i+1)%10)+']'+r).join(' ');
+    zone.appendChild(legend);
+  }
   const edges=rawEdges.filter(e=>showOtherEdgeNodes[direction]||ownEdge(e));
   const groups=relationGroups(edges);
   if(!groups.length){const em=document.createElement('div');em.className='edgeEmpty';em.textContent=rawEdges.length?'他の人のノードは非表示です':'エッジ関係はまだありません';zone.appendChild(em)}
@@ -1311,7 +1359,7 @@ function renderEdgeZone(root,direction){
       if(outgoing&&!li.owner_set&&!insertedOtherDivider&&shown.some(x=>x.owner_set)){const sep=document.createElement('div');sep.className='edgeOtherDivider';sep.textContent='その他の人が追加したParent';list.appendChild(sep);insertedOtherDivider=true}
       const editable=canEditEdgeItem(direction,li),d=document.createElement('div');d.className='previewLink'+(edgeEditMode[direction]?' edgeEditing':'')+(!editable&&edgeEditMode[direction]?' edgeNotEditable':'');
       const stats=edgeStatsHtml(li,relation,direction);
-      if(edgeEditMode[direction]&&editable){const cb=document.createElement('input');cb.type='checkbox';cb.className='edgeSelect';cb.tabIndex=-1;const ek=edgeKey(relation,li.file)+(li.edge_kind==='external'?'\u0000ext:'+String(li.edge_id||''):'');cb.checked=selectedEdgeKeys[direction].has(ek);cb.onchange=()=>{if(cb.checked)selectedEdgeKeys[direction].add(ek);else selectedEdgeKeys[direction].delete(ek);updateEdgeDeleteButton(direction,zone)};d.appendChild(cb)}
+      if(edgeEditMode[direction]&&editable){const ek=edgeKey(relation,li.file)+(li.edge_kind==='external'?'\u0000ext:'+String(li.edge_id||''):'');edgeEditOrder[direction].push(ek);const num=edgeEditOrder[direction].length;const badge=document.createElement('span');badge.className='edgeNumBadge';badge.textContent=String(num%10);badge.style.cssText='display:inline-block;min-width:1.3em;text-align:center;font-size:10px;font-weight:800;border:1px solid var(--border);border-radius:4px;padding:0 3px;margin-right:3px;color:var(--muted)';d.appendChild(badge);d.dataset.edgeNum=String(num);const cb=document.createElement('input');cb.type='checkbox';cb.className='edgeSelect';cb.tabIndex=-1;cb.checked=selectedEdgeKeys[direction].has(ek);cb.onchange=()=>{if(cb.checked)selectedEdgeKeys[direction].add(ek);else selectedEdgeKeys[direction].delete(ek);d.classList.toggle('edgeRowSelected',cb.checked);updateEdgeDeleteButton(direction,zone)};if(cb.checked)d.classList.add('edgeRowSelected');d.appendChild(cb)}
       const content=document.createElement('div');content.style.display='contents';content.innerHTML=authorMiniHtml(authorFor(li.file))+'<a href="#" data-file="'+escapeHtml(li.file)+'">'+escapeHtml(li.label)+'</a>'+(li.edge_kind==='external'?'<span class="edgeOwnerBadge">追加 @'+escapeHtml(li.edge_creator_username||'')+'</span>':'')+(stats?'<span class="metrics">'+stats+'</span>':'');d.appendChild(content);
       if(profile?.local_mode&&editable&&li.edge_kind!=='external'){const lock=document.createElement('button');lock.type='button';lock.tabIndex=-1;lock.className='edgePrivacyBtn'+(li.private?' private':'');lock.textContent=li.private?'非公開':'公開';lock.title='この関係をWebに表示するか';const sourceNote=outgoing?current:li.file,targetNote=outgoing?li.file:current;lock.onclick=e=>{e.preventDefault();e.stopPropagation();toggleEdgePrivacy(sourceNote,targetNote,!li.private)};d.appendChild(lock)}
       list.appendChild(d);
@@ -1383,14 +1431,50 @@ function renderMarkdownDocument(root,text,{taskInteractive=false}={}){
 function renderBodyPreview(root,text){
   const wrap=document.createElement('section');wrap.className='organizeBody';renderMarkdownDocument(wrap,text,{taskInteractive:!!currentData?.can_edit});root.appendChild(wrap);
 }
+// A node's own kind comes only from YAML node_type; it is never inferred from
+// relations. An unspecified note reads as "ノード".
+function nodeTypeLabel(v){return String(v||'')||'ノード'}
+const NODE_TYPE_OPTIONS=[['論点','論点'],['見解','見解'],['支持','支持'],['反対','反対'],['補足','補足'],['まとめ','まとめ'],['カテゴリー','カテゴリー'],['','ノード']];
+async function saveNodeType(v){
+  try{
+    const d=await api('/api/node-type',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:current,node_type:v})});
+    currentData=d;setEditorsFromRaw(d.content);dirty=false;renderEditEdges();if(mode==='organize')renderOrganize();
+    status('属性を「'+nodeTypeLabel(v)+'」にしました');
+  }catch(e){status(e.message)}
+}
+function renderNodeTypeRow(root,{hint=false}={}){
+  if(!currentData||currentData.is_index)return;
+  const row=document.createElement('div');row.className='nodeTypeRow';
+  row.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;font-size:12px';
+  const lab=document.createElement('label');lab.className='nodeTypePick';lab.style.cssText='display:flex;align-items:center;gap:6px;font-weight:750';
+  lab.appendChild(document.createTextNode('属性'));
+  if(currentData.can_edit){
+    const sel=document.createElement('select');sel.style.cssText='font-size:12px;padding:2px 5px';
+    for(const [val,txt] of NODE_TYPE_OPTIONS){const o=document.createElement('option');o.value=val;o.textContent=txt;sel.appendChild(o)}
+    sel.value=currentData.node_type||'';
+    sel.onchange=()=>saveNodeType(sel.value);
+    lab.appendChild(sel);
+  }else{
+    const span=document.createElement('span');span.style.fontWeight='400';span.textContent=nodeTypeLabel(currentData.node_type);lab.appendChild(span);
+  }
+  row.appendChild(lab);
+  if(hint&&currentData.can_edit){
+    const h=document.createElement('span');h.style.cssText='color:var(--muted);font-weight:400;font-size:11px';
+    h.textContent='キー: t=属性 ／ p=Parent追加 ／ c=Child追加 ／ P・C=関係を編集（数字で複数選択→r+数字で関係変更・d削除）';
+    row.appendChild(h);
+  }
+  root.appendChild(row);
+}
 function renderEditEdges(){
   const p=$('editParentEdges'),c=$('editChildEdges');if(!p||!c)return;
   p.innerHTML='';c.innerHTML='';
+  renderNodeTypeRow(p);
   renderEdgeZone(p,'outgoing');renderEdgeZone(c,'incoming');
   for(const root of [p,c])root.querySelectorAll('[data-file]').forEach(a=>a.onclick=e=>{e.preventDefault();openFile(a.dataset.file)});
 }
 function renderOrganize(){
   const root=$('organizeView');root.innerHTML='';
+  renderNodeTypeRow(root,{hint:true});
   // Parent / Child are directions, not Markdown headings or visible labels.
   // Outgoing (parent-side) relations stay above the boundary; incoming
   // (child-side/backlink) relations stay below it.
@@ -1905,12 +1989,47 @@ window.addEventListener('keydown',e=>{
     toggleViewMode().catch(console.error);return;
   }
 },true);
+function enterEdgeEditExclusive(direction){
+  const other=direction==='outgoing'?'incoming':'outgoing';
+  edgeEditMode[other]=false;selectedEdgeKeys[other].clear();
+  edgeEditMode[direction]=!edgeEditMode[direction];selectedEdgeKeys[direction].clear();orgKeyPrefix='';
+  renderEditEdges();if(mode==='organize')renderOrganize();
+  status(edgeEditMode[direction]?'編集モード: 数字=行を選択 ／ a=全選択 ／ s=解除 ／ r+数字=関係を変更 ／ d=削除 ／ Esc=終了':'');
+}
 window.addEventListener('keydown',e=>{
   if(mode!=='organize'||document.querySelector('dialog[open]'))return;
   const active=document.activeElement;
   const tag=active?.tagName||'';
   const isFormControl=['INPUT','TEXTAREA','SELECT','BUTTON'].includes(tag);
+  const editDir=edgeEditMode.outgoing?'outgoing':(edgeEditMode.incoming?'incoming':null);
+  const plain=!e.ctrlKey&&!e.metaKey&&!e.altKey&&!isFormControl;
+  // Edge edit mode: everything is a direct key press — no Tab/arrow mashing.
+  if(editDir&&plain){
+    if(e.key==='Escape'){e.preventDefault();edgeEditMode.outgoing=edgeEditMode.incoming=false;selectedEdgeKeys.outgoing.clear();selectedEdgeKeys.incoming.clear();orgKeyPrefix='';renderOrganize();status('');return}
+    if(/^[0-9]$/.test(e.key)){
+      e.preventDefault();
+      const num=e.key==='0'?10:Number(e.key);
+      if(orgKeyPrefix==='r'){orgKeyPrefix='';const rel=NEW_NOTE_RELATIONS[num-1];if(rel)relabelSelectedEdges(editDir,rel);return}
+      const ek=edgeEditOrder[editDir][num-1];
+      if(ek){const set=selectedEdgeKeys[editDir];set.has(ek)?set.delete(ek):set.add(ek);renderOrganize()}
+      return;
+    }
+    if(e.key==='a'){e.preventDefault();selectedEdgeKeys[editDir]=new Set(edgeEditOrder[editDir]);orgKeyPrefix='';renderOrganize();return}
+    if(e.key==='s'){e.preventDefault();selectedEdgeKeys[editDir].clear();orgKeyPrefix='';renderOrganize();return}
+    if(e.key==='r'){e.preventDefault();orgKeyPrefix=orgKeyPrefix==='r'?'':'r';status(orgKeyPrefix==='r'?'関係の番号を押してください（1=論点 … 0=無記）':'');return}
+    if(e.key==='d'||e.key==='Delete'){e.preventDefault();orgKeyPrefix='';deleteSelectedEdges(editDir);return}
+    orgKeyPrefix='';
+  }else if(plain){
+    if(e.key==='t'){e.preventDefault();orgKeyPrefix='t';status('属性の番号を押してください（1=論点 … 7=カテゴリー 8=ノード）');return}
+    if(orgKeyPrefix==='t'&&/^[1-8]$/.test(e.key)){e.preventDefault();orgKeyPrefix='';const opt=NODE_TYPE_OPTIONS[Number(e.key)-1];if(opt&&currentData?.can_edit)saveNodeType(opt[0]);return}
+    if(e.key==='p'){e.preventDefault();orgKeyPrefix='';openEdgeDialog('outgoing').catch(err=>status(err.message));return}
+    if(e.key==='c'){e.preventDefault();orgKeyPrefix='';openEdgeDialog('incoming').catch(err=>status(err.message));return}
+    if(e.key==='P'){e.preventDefault();enterEdgeEditExclusive('outgoing');return}
+    if(e.key==='C'){e.preventDefault();enterEdgeEditExclusive('incoming');return}
+    if(e.key!=='t')orgKeyPrefix='';
+  }
   if(e.key==='Tab'){
+    if(active&&active.closest&&active.closest('.edgeZoneEditing'))return;
     // 整理ビューでは Tab / Shift+Tab の対象をノードリンクだけに限定する。
     // select・button などに現在フォーカスがあっても、次の Tab でリンク選択へ戻す。
     const links=organizeLinks();
@@ -3429,6 +3548,35 @@ def remove_exact_edge(content: str, relation: str, target: str) -> str:
     """Remove an exact relation -> target edge and clean the relation heading if it becomes empty."""
     result = remove_link_from_relation(content, relation, target)
     return remove_empty_relation_section(result, relation)
+
+
+def relabel_exact_edge(content: str, old_relation: str, target: str, new_relation: str) -> str:
+    """Change the relation label of one Parent-side ``old::[t](target)`` edge.
+
+    Only the canonical Parent segment (above ``---``) is touched; derived Child
+    mirrors are rebuilt by :func:`sync_edges`. Returns the content unchanged when
+    no matching edge is found.
+    """
+    new_relation = str(new_relation or "").strip()
+    if not new_relation:
+        return content
+    parent, child = split_direction_content(content)
+    old_norm = normalized_relation(old_relation)
+    edges: list[tuple[str, str, str]] = []
+    changed = False
+    for rel, label, linked in _parse_relation_links(parent):
+        if normalized_relation(rel) == old_norm and linked == target:
+            rel = new_relation
+            changed = True
+        edges.append((rel, label, linked))
+    if not changed:
+        return content
+    parent_body = _strip_relation_edge_sections(parent)
+    parent = _compose_segment_with_edges(parent_body, edges)
+    out = parent.rstrip() + "\n\n---\n"
+    if child.strip():
+        out += "\n" + child.strip() + "\n"
+    return out
 
 
 def delete_edges_for_user(user_id: int, current_name: str, direction: str, edges: list[dict]) -> None:
@@ -6807,6 +6955,68 @@ class Handler(BaseHTTPRequestHandler):
                 delete_edges_for_user(uid, current_name, direction, [x for x in raw_edges if isinstance(x, dict)])
                 schedule_local_publish(uid)
                 return self.json_response(sns_file_payload(current_name, uid, f"user:{uid}"))
+            if u.path == "/api/node-type":
+                name = safe_name(body.get("name", ""))
+                if not (VAULT / name).exists():
+                    raise ValueError("ノートが見つかりません")
+                if not can_edit_note(uid, name):
+                    raise PermissionError("このノートの属性は変更できません")
+                # 指定なし / unknown values clear the line; creator/created/updated
+                # are never touched. node_type is independent from relations.
+                new_content = set_node_type_frontmatter(read_file(name), body.get("node_type", ""))
+                enforce_note_write_quota(uid, name, new_content)
+                write_file(name, new_content)
+                sync_edges(); schedule_local_publish(uid)
+                return self.json_response(sns_file_payload(name, uid, f"user:{uid}"))
+            if u.path == "/api/edge-relabel":
+                direction = str(body.get("direction", "outgoing"))
+                current_name = safe_name(body.get("current", index_filename(uid)))
+                new_relation = str(body.get("relation", "")).strip()[:80]
+                raw_edges = body.get("edges", [])
+                if not new_relation:
+                    raise ValueError("関係名を入力してください")
+                if not isinstance(raw_edges, list):
+                    raise ValueError("edges must be a list")
+                if not (VAULT / current_name).exists():
+                    raise ValueError("現在のノートが見つかりません")
+                touched: dict[str, str] = {}
+                relabeled = 0
+                for raw in raw_edges:
+                    if not isinstance(raw, dict):
+                        continue
+                    old_relation = str(raw.get("relation", "")).strip()
+                    other = safe_name(str(raw.get("file", "")))
+                    edge_id = int(raw.get("edge_id") or 0)
+                    is_external = str(raw.get("edge_kind", "")) == "external" or edge_id
+                    if is_external and not LOCAL_MODE:
+                        with db_conn() as con:
+                            row = con.execute("SELECT creator_user_id FROM external_edges WHERE id=?", (edge_id,)).fetchone()
+                            if row and int(row["creator_user_id"]) == uid:
+                                con.execute("UPDATE external_edges SET relation=? WHERE id=?", (new_relation, edge_id))
+                                relabeled += 1
+                        continue
+                    if direction == "outgoing":
+                        note, tgt = current_name, other
+                        if not can_edit_note(uid, note):
+                            continue
+                    elif direction == "incoming":
+                        note, tgt = other, current_name
+                        if file_owner_id(note) != uid:
+                            continue
+                    else:
+                        raise ValueError("invalid direction")
+                    base = touched.get(note, read_file(note))
+                    updated = relabel_exact_edge(base, old_relation, tgt, new_relation)
+                    if updated != base:
+                        touched[note] = updated
+                        relabeled += 1
+                for note, cont in touched.items():
+                    enforce_note_write_quota(uid, note, cont)
+                    write_file(note, cont)
+                sync_edges(); schedule_local_publish(uid)
+                payload = sns_file_payload(current_name, uid, f"user:{uid}")
+                payload["relabeled"] = relabeled
+                return self.json_response(payload)
             if u.path == "/api/edge-add":
                 direction = str(body.get("direction", "outgoing")); current_name = safe_name(body.get("current", index_filename(uid)))
                 relation = str(body.get("relation", "")).strip()[:80]
