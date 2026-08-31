@@ -1311,12 +1311,26 @@ function relationGroups(edges){
   for(const e of (edges||[])){const k=String(e.relation||'関連').trim()||'関連';if(!map.has(k))map.set(k,[]);map.get(k).push({...e,label:e.title||e.file,file:e.file,relation:k,private:!!e.private})}
   return [...map.entries()];
 }
-// Group child edges by the target note's own file_type (属性別表示).
-function fileTypeGroups(edges){
-  const order=['論点','見解','支持','反対','補足','まとめ','カテゴリー','ノード'];
-  const map=new Map();
-  for(const e of (edges||[])){const k=nodeTypeLabel(e.node_type);if(!map.has(k))map.set(k,[]);map.get(k).push({...e,label:e.title||e.file,file:e.file,relation:e.relation,private:!!e.private})}
-  return [...map.entries()].sort((a,b)=>{const ia=order.indexOf(a[0]),ib=order.indexOf(b[0]);return (ia<0?99:ia)-(ib<0?99:ib)});
+// A カテゴリー note's children: split into a カテゴリー group (file_type ===
+// カテゴリー) and a ノート group (everything else). With byAttr, the ノート
+// group is broken up by file_type (論点 … ノード).
+function categoryChildGroups(edges,byAttr){
+  const cats=[],notes=[];
+  for(const e of (edges||[])){
+    const it={...e,label:e.title||e.file,file:e.file,relation:e.relation,private:!!e.private};
+    (e.node_type==='カテゴリー'?cats:notes).push(it);
+  }
+  const out=[];
+  if(cats.length)out.push(['カテゴリー',cats]);
+  if(byAttr){
+    const order=['論点','見解','支持','反対','補足','まとめ','ノード'];
+    const m=new Map();
+    for(const it of notes){const k=nodeTypeLabel(it.node_type);(m.get(k)||m.set(k,[]).get(k)).push(it)}
+    [...m.entries()].sort((a,b)=>{const ia=order.indexOf(a[0]),ib=order.indexOf(b[0]);return (ia<0?99:ia)-(ib<0?99:ib)}).forEach(g=>out.push(g));
+  }else if(notes.length){
+    out.push(['ノート',notes]);
+  }
+  return out;
 }
 function edgeKey(relation,file){return String(relation||'')+'\u0000'+String(file||'')}
 function edgeStatsHtml(li,relation,direction){
@@ -1411,15 +1425,13 @@ function renderEdgeZone(root,direction){
     cb.onchange=()=>{showOtherEdgeNodes[direction]=cb.checked;localStorage.setItem(direction==='outgoing'?'nnShowOtherOutgoing':'nnShowOtherIncoming',cb.checked?'1':'0');renderEditEdges();if(mode==='organize')renderOrganize()};
     lab.appendChild(cb);lab.appendChild(document.createTextNode('他の人のノードを表示'));zh.appendChild(lab);
   }
-  // A category note's Child list can be regrouped by the child's own file_type.
+  // A カテゴリー note's Child list is grouped by the child's own file_type.
   const catChild=direction==='incoming'&&currentData&&currentData.node_type==='カテゴリー';
-  const attrView=catChild&&childByAttr;
-  if(attrView)edgeEditMode[direction]=false;
   const canAdd=!!profile?.id;
   const editableCount=rawEdges.reduce((n,e)=>n+(canEditEdgeItem(direction,e)?1:0),0);
   if(!edgeEditMode[direction]){
-    if(canAdd&&!attrView){const add=document.createElement('button');add.type='button';add.textContent='＋';add.title=outgoing?'Parentとの関係を追加（他人のノートにも追加可）':'Childとの関係を追加';add.onclick=()=>openEdgeDialog(direction);zh.appendChild(add)}
-    if(editableCount&&!attrView){const edit=document.createElement('button');edit.type='button';edit.textContent='編集';edit.title='自分が作成した関係を編集';edit.onclick=()=>toggleEdgeEdit(direction);zh.appendChild(edit)}
+    if(canAdd){const add=document.createElement('button');add.type='button';add.textContent='＋';add.title=outgoing?'Parentとの関係を追加（他人のノートにも追加可）':'Childとの関係を追加';add.onclick=()=>openEdgeDialog(direction);zh.appendChild(add)}
+    if(editableCount){const edit=document.createElement('button');edit.type='button';edit.textContent='編集';edit.title='自分が作成した関係を編集';edit.onclick=()=>toggleEdgeEdit(direction);zh.appendChild(edit)}
     if(rawEdges.length){const all=document.createElement('button');all.type='button';all.className='edgeZoneExpandAll';all.textContent=edgeExpandAll[direction]?'折りたたむ':'すべて展開';all.onclick=()=>{edgeExpandAll[direction]=!edgeExpandAll[direction];if(!edgeExpandAll[direction])edgeExpandedGroups[direction].clear();renderEditEdges();if(mode==='organize')renderOrganize()};zh.appendChild(all)}
   }else{
     zone.classList.add('edgeZoneEditing');
@@ -1441,13 +1453,7 @@ function renderEdgeZone(root,direction){
     zone.appendChild(legend);
   }
   const edges=rawEdges.filter(e=>showOtherEdgeNodes[direction]||ownEdge(e));
-  let groups;
-  if(attrView){
-    groups=fileTypeGroups(edges);
-  }else{
-    groups=relationGroups(edges);
-    if(catChild){const rk=r=>relIs(r,'カテゴリー')?0:(relIs(r,'ノート')?1:2);groups.sort((a,b)=>rk(a[0])-rk(b[0]))}
-  }
+  const groups=catChild?categoryChildGroups(edges,childByAttr):relationGroups(edges);
   if(!groups.length){const em=document.createElement('div');em.className='edgeEmpty';em.textContent=rawEdges.length?'他の人のノードは非表示です':'エッジ関係はまだありません';zone.appendChild(em)}
   for(const [relation,itemsRaw] of groups){
     const block=document.createElement('section');block.className='previewSection edgeGroup';block.dataset.headingLevel='2';
@@ -1466,7 +1472,7 @@ function renderEdgeZone(root,direction){
       if(outgoing&&!li.owner_set&&!insertedOtherDivider&&shown.some(x=>x.owner_set)){const sep=document.createElement('div');sep.className='edgeOtherDivider';sep.textContent='その他の人が追加したParent';list.appendChild(sep);insertedOtherDivider=true}
       const editable=canEditEdgeItem(direction,li),d=document.createElement('div');d.className='previewLink'+(edgeEditMode[direction]?' edgeEditing':'')+(!editable&&edgeEditMode[direction]?' edgeNotEditable':'');
       const stats=edgeStatsHtml(li,relation,direction);
-      if(edgeEditMode[direction]&&editable){const ek=edgeKey(relation,li.file)+(li.edge_kind==='external'?'\u0000ext:'+String(li.edge_id||''):'');edgeEditOrder[direction].push(ek);const num=edgeEditOrder[direction].length;const badge=document.createElement('span');badge.className='edgeNumBadge';badge.textContent=String(num%10);badge.style.cssText='display:inline-block;min-width:1.3em;text-align:center;font-size:10px;font-weight:800;border:1px solid var(--border);border-radius:4px;padding:0 3px;margin-right:3px;color:var(--muted)';d.appendChild(badge);d.dataset.edgeNum=String(num);const cb=document.createElement('input');cb.type='checkbox';cb.className='edgeSelect';cb.tabIndex=-1;cb.checked=selectedEdgeKeys[direction].has(ek);cb.onchange=()=>{if(cb.checked)selectedEdgeKeys[direction].add(ek);else selectedEdgeKeys[direction].delete(ek);d.classList.toggle('edgeRowSelected',cb.checked);updateEdgeDeleteButton(direction,zone)};if(cb.checked)d.classList.add('edgeRowSelected');d.appendChild(cb)}
+      if(edgeEditMode[direction]&&editable){const ek=edgeKey(li.relation||relation,li.file)+(li.edge_kind==='external'?'\u0000ext:'+String(li.edge_id||''):'');edgeEditOrder[direction].push(ek);const num=edgeEditOrder[direction].length;const badge=document.createElement('span');badge.className='edgeNumBadge';badge.textContent=String(num%10);badge.style.cssText='display:inline-block;min-width:1.3em;text-align:center;font-size:10px;font-weight:800;border:1px solid var(--border);border-radius:4px;padding:0 3px;margin-right:3px;color:var(--muted)';d.appendChild(badge);d.dataset.edgeNum=String(num);const cb=document.createElement('input');cb.type='checkbox';cb.className='edgeSelect';cb.tabIndex=-1;cb.checked=selectedEdgeKeys[direction].has(ek);cb.onchange=()=>{if(cb.checked)selectedEdgeKeys[direction].add(ek);else selectedEdgeKeys[direction].delete(ek);d.classList.toggle('edgeRowSelected',cb.checked);updateEdgeDeleteButton(direction,zone)};if(cb.checked)d.classList.add('edgeRowSelected');d.appendChild(cb)}
       const content=document.createElement('div');content.style.display='contents';content.innerHTML=authorMiniHtml(authorFor(li.file))+'<a href="#" data-file="'+escapeHtml(li.file)+'">'+escapeHtml(li.label)+'</a>'+typeMiniHtml(li.node_type)+(li.edge_kind==='external'?'<span class="edgeOwnerBadge">追加 @'+escapeHtml(li.edge_creator_username||'')+'</span>':'')+(stats?'<span class="metrics">'+stats+'</span>':'');d.appendChild(content);
       if(profile?.local_mode&&editable&&li.edge_kind!=='external'){const lock=document.createElement('button');lock.type='button';lock.tabIndex=-1;lock.className='edgePrivacyBtn'+(li.private?' private':'');lock.textContent=li.private?'非公開':'公開';lock.title='この関係をWebに表示するか';const sourceNote=outgoing?current:li.file,targetNote=outgoing?li.file:current;lock.onclick=e=>{e.preventDefault();e.stopPropagation();toggleEdgePrivacy(sourceNote,targetNote,!li.private)};d.appendChild(lock)}
       list.appendChild(d);
@@ -1578,7 +1584,7 @@ function renderNodeTypeRow(root,{hint=false}={}){
     const t=document.createElement('label');t.style.cssText='display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:400';
     const cb=document.createElement('input');cb.type='checkbox';cb.checked=childByAttr;cb.tabIndex=-1;
     cb.onchange=()=>{childByAttr=cb.checked;try{localStorage.setItem('nnChildByAttr',childByAttr?'1':'0')}catch(_){}renderEditEdges();if(mode==='organize')renderOrganize()};
-    t.appendChild(cb);t.appendChild(document.createTextNode('子を属性別に表示'));
+    t.appendChild(cb);t.appendChild(document.createTextNode('ノートを属性別に表示'));
     row.appendChild(t);
   }
   if(hint&&currentData.can_edit){
@@ -2330,7 +2336,10 @@ function updateNewCombos(){
 // Under a カテゴリー note or the Index, a child's relation can only be
 // カテゴリー (a sub-category) or ノート (a plain note in it).
 function newParentRestricted(){return !!(currentData&&(currentData.is_index||currentData.node_type==='カテゴリー'))}
-const RESTRICTED_RELATION_CHOICES=[{value:'カテゴリー',label:'カテゴリー'},{value:'ノート',label:'ノート'}];
+// A カテゴリー note (and the Index) only ever links with カテゴリー — up and
+// down. Whether a child then shows as カテゴリー or ノート depends on its own
+// file_type, not on the relation.
+const RESTRICTED_RELATION_CHOICES=[{value:'カテゴリー',label:'カテゴリー'}];
 function newRelationChoices(){return newParentRestricted()?RESTRICTED_RELATION_CHOICES:RELATION_CHOICES}
 function setNewNodeType(v){
   newNodeTypeVal=v;
@@ -2338,7 +2347,7 @@ function setNewNodeType(v){
   // picks a relation themselves; after that it is left alone.
   if(!newRelationTouched){
     if(newParentRestricted()){
-      newRelationVal=(v==='カテゴリー')?'カテゴリー':'ノート';
+      newRelationVal='カテゴリー';
     }else if(v==='__custom__'){newRelationVal='__custom__';$('customRelation').value=$('newNodeTypeCustom').value}
     else if(v)newRelationVal=v;   // 選択しない ('') leaves the relation as-is
   }
@@ -2438,16 +2447,10 @@ function updateEdgeCombo(){
 }
 function setEdgeRelation(v){edgeRelationVal=v;if(v==='__custom__'){updateEdgeCombo();dlgSetMode('insert',$('edgeCustomRelation'));return}updateEdgeCombo()}
 function currentEdgeRelation(){return edgeRelationVal==='__custom__'?$('edgeCustomRelation').value.trim():(edgeRelationVal||'関連')}
-// incoming = adding a Child to the current note; outgoing = adding a Parent.
-// A category / Index gets カテゴリー|ノート children; a category's parent can
-// only be カテゴリー.
+// A カテゴリー note (or the Index) only links with カテゴリー, up and down.
 function edgeRelationChoices(direction){
   const cd=currentData;
-  if(direction==='incoming'){
-    if(cd&&(cd.is_index||cd.node_type==='カテゴリー'))return RESTRICTED_RELATION_CHOICES;
-  }else if(cd&&cd.node_type==='カテゴリー'){
-    return [{value:'カテゴリー',label:'カテゴリー'}];
-  }
+  if(cd&&(cd.is_index||cd.node_type==='カテゴリー'))return RESTRICTED_RELATION_CHOICES;
   return RELATION_CHOICES;
 }
 $('edgeRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:edgeRelationChoices(edgeDialogMode),current:edgeRelationVal,onPick:setEdgeRelation});
