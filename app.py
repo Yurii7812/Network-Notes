@@ -2006,6 +2006,30 @@ async function toggleTaskByOrdinal(ord){
 function toggleTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(!taskLineInfo(line)){status('この行はチェックボックスではありません');return false}cm.replaceRange(line.replace(/\[([ xX])\]/,m=>/x/i.test(m)?'[ ]':'[x]'),{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(cur.ch,cm.getLine(cur.line).length)});return true}
 function makeTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(taskLineInfo(line)){status('すでにチェックボックスです');return}let next;if(!line.trim())next='- [ ] ';else if(/^\s*[-*+]\s+/.test(line))next=line.replace(/^(\s*[-*+]\s+)/,'$1[ ] ');else next='- [ ] '+line;cm.replaceRange(next,{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(next.length,Math.max(6,cur.ch+6))})}
 function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLine(cur.line)||'').trim()?'\n':'';const md=before+'| 列1 | 列2 |\n| --- | --- |\n|  |  |';cm.replaceSelection(md,'end','+table');const pos=cm.getCursor();cm.setCursor({line:Math.max(0,pos.line),ch:2})}
+// nt = retype the H1 title from scratch; nT = edit the existing title text.
+function editSourceTitle(cm,blank){
+  if(!currentData?.can_edit)return;
+  let ln=-1,prefix='# ';
+  for(let i=0;i<cm.lineCount();i++){const m=/^(#\s+)(.*)$/.exec(cm.getLine(i)||'');if(m){ln=i;prefix=m[1];break}}
+  if(ln<0){
+    // No title yet: insert one just after the YAML frontmatter.
+    const lines=cm.getValue().split('\n');let at=0;
+    if(/^---\s*$/.test(lines[0]||'')){for(let i=1;i<lines.length;i++){if(/^---\s*$/.test(lines[i])){at=i+1;break}}}
+    while(at<lines.length&&!(lines[at]||'').trim())at++;
+    cm.replaceRange('# \n\n',{line:at,ch:0});
+    ln=at;prefix='# ';blank=true;
+  }
+  const line=cm.getLine(ln)||'';
+  if(blank){
+    cm.replaceRange(prefix,{line:ln,ch:0},{line:ln,ch:line.length},'+vim');
+    cm.setCursor({line:ln,ch:prefix.length});
+  }else{
+    cm.setCursor({line:ln,ch:line.length});
+  }
+  cm.scrollIntoView({line:ln,ch:0},80);
+  sourceEnterInsert();
+  dirty=true;queueAutosave(300);
+}
 // ---- Custom NORMAL-mode commands on the vim keymap ----
 // Direct keys for link navigation (these match the pre-addon layer):
 //   Enter = open the link under the cursor (else move down a line)
@@ -2077,6 +2101,8 @@ function registerVimLeaderCommands(){
     // (its right edge), matching what the block visually covered — e.g. on the
     // "3" of "123" you land after the 3, not between 2 and 3.
     nnSmartInsert:cm=>{try{CodeMirror.Vim.handleKey(cm,'a')}catch(_){CodeMirror.Vim.handleKey(cm,'i')}},
+    nnTitleNew:cm=>{if(canEdit())editSourceTitle(cm,true)},
+    nnTitleEdit:cm=>{if(canEdit())editSourceTitle(cm,false)},
     nnLinkNext:cm=>vimJumpLink(cm,1),
     nnLinkPrev:cm=>vimJumpLink(cm,-1),
     nnEnter:cm=>{if(!vimOpenCursorLink(cm))cm.execCommand('goLineDown');},
@@ -2091,6 +2117,9 @@ function registerVimLeaderCommands(){
   nmap('\\x','nnToggleTask');nmap('\\t','nnMakeTask');nmap('\\T','nnTable');nmap('\\e','nnEdgesDialog');
   nmap('\\y','nnCopyLink');nmap('\\f','nnNoteFind');nmap('\\o','nnOrganize');nmap('\\a','nnAttach');
   nmap('i','nnSmartInsert');
+  // `n` is Vim's search-next and always fires on its own, so a real `nt`/`nT`
+  // sequence is impossible; the title commands hang off the `\` leader instead.
+  nmap('\\h','nnTitleNew');nmap('\\H','nnTitleEdit');
 }
 $('vimIndicator').onclick=()=>{
   try{
@@ -2286,7 +2315,7 @@ function openNewNodeDialog(){
   newRelationVal=(currentData&&currentData.node_type==='カテゴリー')?'カテゴリー':'';
   updateNewCombos();
   $('newDialog').showModal();
-  setTimeout(()=>dlgSetMode('insert',$('newTitle')),0);
+  setTimeout(()=>dlgSetMode('normal'),0);
 }
 $('newNodeTypeBtn').onclick=()=>dlgOpenPicker({title:'属性を選択（英数字キー / クリック）',entries:NODE_TYPE_CHOICES,current:newNodeTypeVal,onPick:setNewNodeType});
 $('newRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:RELATION_CHOICES,current:newRelationVal,onPick:setNewRelation});
@@ -2413,9 +2442,15 @@ const SHORTCUTS_HTML=[
   '<b>ビュー切替（Vim風）</b>',
   '\\o : 整理ビュー ↔ ソース（どちらからでも同じキー。NORMALで開く）',
   'Ctrl+E : 同上',
-  'ソースで i : INSERT（入力開始）',
+  'ソースで i : INSERT（入力開始。文字の右側に入る）',
   'Ctrl+K : ノートを検索してジャンプ（どこからでも）',
   '? : このヘルプ',
+  '',
+  '<b>ソース NORMAL</b>',
+  '\\h : タイトルを書き直す（空から）',
+  '\\H : タイトルを編集する（末尾から）',
+  '\\n 作成 ／ \\p 親 ／ \\c 子 ／ \\e 分類 ／ \\y リンク',
+  '\\a 添付 ／ \\t ☑ ／ \\T 表 ／ \\d 削除 ／ \\f 検索',
   '',
   '<b>整理ビュー</b>',
   'Tab / Shift+Tab : リンク移動 ／ Enter : 開く',
@@ -2423,18 +2458,17 @@ const SHORTCUTS_HTML=[
   't → 数字 : 属性を設定',
   'p : Parent関係を追加 ／ c : Child関係を追加',
   'P : Parentゾーンを編集 ／ C : Childゾーンを編集',
-  '\\f : ノート検索',
   '',
   '<b>編集モード（P / C のあと）</b>',
   '数字 : 行を選択 ／ a : 全選択 ／ s : 解除',
   'r → 数字 : 選択行の関係を変更 ／ d : 削除',
   'e : 展開 ／ o : 他人の関係 ／ Esc : 終了',
   '',
-  '<b>ポップアップ（作成 / エッジ / 検索）</b>',
-  'i : 入力 ／ Esc : ノーマル ／ q : 閉じる',
+  '<b>ポップアップ（作成 / エッジ）</b>',
+  'NORMALで開く ／ i : 入力 ／ Esc : INSERT解除のみ（閉じない）',
+  'q または キャンセル : 閉じる',
   't : 属性一覧 ／ r : 関係一覧（英数字キーで選択）',
-  's : ノート検索 ／ n : 新規ノート ／ p : 貼付',
-  'Enter : 確定',
+  's : ノート検索 ／ n : 新規ノート ／ p : 貼付 ／ Enter : 確定',
 ].join('<br>');
 function toggleShortcuts(){
   const d=$('shortcutsDialog');
@@ -2470,8 +2504,9 @@ async function openEdgeDialog(direction,preferNew=false){
   setEdgeTarget('');
   $('edgeNewWrap').style.display='none';$('edgePasteWrap').style.display='none';
   $('edgeDialog').showModal();
-  if(preferNew){$('edgeNewWrap').style.display='grid';setTimeout(()=>dlgSetMode('insert',$('edgeNewTitle')),0)}
-  else{dlgSetMode('normal');setTimeout(()=>openNotePicker(setEdgeTarget),40)}
+  dlgSetMode('normal');
+  // The search palette is the primary action; n reveals the new-note field.
+  setTimeout(()=>openNotePicker(setEdgeTarget),40);
 }
 $('edgeNewBtn').onclick=async()=>{
   const relation=currentEdgeRelation(),title=$('edgeNewTitle').value.trim();
@@ -2589,7 +2624,9 @@ window.addEventListener('keydown',e=>{
   }
   // NORMAL — keystrokes are commands, never text.
   e.stopPropagation();
-  if(e.key==='Escape'){e.preventDefault();dlgCancelDialog(dlg);return}
+  // Esc never closes the popup (it would lose in-progress input); it only
+  // exits INSERT. Close with q or the キャンセル button.
+  if(e.key==='Escape'){e.preventDefault();return}
   if(e.key==='Enter'){e.preventDefault();dlgConfirm();return}
   if(e.key==='q'){e.preventDefault();dlgCancelDialog(dlg);return}
   if(e.key==='i'){e.preventDefault();dlgSetMode('insert');return}
