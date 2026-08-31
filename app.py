@@ -2401,6 +2401,7 @@ $('notePickInput').addEventListener('input',()=>{
   notePickState.timer=setTimeout(()=>loadNotePick().catch(e=>status(e.message)),160);
 });
 $('notePickDialog').addEventListener('keydown',e=>{
+  if(e.key==='Escape'){e.preventDefault();e.stopPropagation();$('notePickDialog').close();return}
   if(e.key==='ArrowDown'||(e.ctrlKey&&(e.key==='n'||e.key==='N'))){e.preventDefault();notePickMove(1)}
   else if(e.key==='ArrowUp'||(e.ctrlKey&&(e.key==='p'||e.key==='P'))){e.preventDefault();notePickMove(-1)}
   else if(e.key==='Enter'){e.preventDefault();notePickChoose()}
@@ -2573,6 +2574,9 @@ window.addEventListener('keydown',e=>{
   openNotePicker();
 },true);
 window.addEventListener('keydown',e=>{
+  // The note-search palette / shortcuts dialog stack on top of a vim-dialog;
+  // let them own their keys (otherwise this handler eats their Esc).
+  if($('notePickDialog').open||$('shortcutsDialog').open)return;
   const dlg=activeVimDialog();if(!dlg)return;
   if(e.ctrlKey||e.metaKey||e.altKey||e.key==='Tab')return;
   if(dlgPicker){
