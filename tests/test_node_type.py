@@ -63,10 +63,11 @@ class NodeTypeFrontmatterTests(unittest.TestCase):
         self.assertRegex(text, r"(?m)^updated: .+$")
         self.assertEqual(self.m.node_type_of(text), "見解")
 
-    def test_new_note_markdown_omits_line_when_unspecified(self):
-        for value in ("", "指定なし", "指定しない"):
+    def test_new_note_markdown_writes_null_when_unspecified(self):
+        for value in ("", "指定なし", "指定しない", "null"):
             text = self.m.new_note_markdown("alice__20260101000000.md", "T", value)
-            self.assertNotIn("node_type", text)
+            self.assertIn("node_type: null", text)
+            self.assertEqual(self.m.node_type_of(text), "")
 
     def test_new_note_markdown_keeps_a_custom_node_type(self):
         text = self.m.new_note_markdown("alice__20260101000000.md", "T", "前提")
@@ -144,7 +145,10 @@ class NodeTypeSpaContractTests(unittest.TestCase):
         self.assertIn('"node_type": node_type_of(content)', src)
         self.assertIn("new_note_markdown(filename, title, node_type)", src)
         # unspecified node_type reads as "ノード", never inferred from relations
-        self.assertIn("function nodeTypeLabel(v){return String(v||'')||'ノード'}", src)
+        self.assertIn("function nodeTypeLabel(v){return String(v||'').trim()||'ノード'}", src)
+        # colour table + "node_type:" badge
+        self.assertIn("const TYPE_COLORS=", src)
+        self.assertIn("function typeBadgeHtml(v)", src)
         # attribute mirrors into the relation until the user picks one
         self.assertIn("newRelationTouched", src)
         # keyboard-first edge editing endpoints
@@ -157,8 +161,8 @@ class NodeTypeSpaContractTests(unittest.TestCase):
         self.assertIn("function dlgOpenPicker(cfg)", src)
         # "選択しない（ノード）" is the second-to-last choice, before free input;
         # picking it for the relation writes ノード::
-        self.assertIn("{value:'',label:'選択しない（ノード）'},{value:'__custom__'", src)
-        self.assertIn("if(!relation)relation='ノード';", src)
+        self.assertIn("{value:'',label:'選択しない（ノード）'},{value:'__custom__'", src)  # NODE_TYPE_CHOICES only
+        self.assertIn("if(!relation)relation='関連';", src)  # relation is never empty
         # keyboard-only note search palette, opened with Ctrl+K, reused by \\p /\\c
         self.assertIn("function openNotePicker(onPick)", src)
         self.assertIn('id="notePickDialog"', src)

@@ -1358,6 +1358,18 @@ async function relabelSelectedEdges(direction,relation){
     status((d.relabeled||edges.length)+'件の関係を「'+relation+'」に変更しました');
   }catch(err){status(err.message)}
 }
+async function bulkAttrSelectedEdges(direction,nodeType){
+  const keys=[...selectedEdgeKeys[direction]];
+  if(!keys.length){status('属性を変えるノードを選択してください');return}
+  const names=[...new Set(keys.map(k=>k.split('\u0000')[1]).filter(Boolean))];
+  try{
+    await flushAutosave();
+    await saveNodeType(nodeType,names);
+    selectedEdgeKeys.outgoing.clear();selectedEdgeKeys.incoming.clear();
+    edgeEditMode.outgoing=edgeEditMode.incoming=false;
+    if(mode==='organize')renderOrganize();else renderEditEdges();
+  }catch(err){status(err.message)}
+}
 async function toggleEdgePrivacy(sourceNote,targetNote,makePrivate){
   try{
     await api('/api/note-publish-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:sourceNote,target:targetNote,private:makePrivate})});
@@ -1413,7 +1425,7 @@ function renderEdgeZone(root,direction){
     edgeEditOrder[direction]=[];
     const legend=document.createElement('div');legend.className='edgeEditLegend';
     legend.style.cssText='font-size:10.5px;color:var(--muted);line-height:1.7;margin:2px 0 4px';
-    legend.textContent='数字: 行を選択 ／ a: 全選択 ／ s: 解除 ／ r+数字: 関係を変更 ／ d: 削除 ／ e: 展開 ／ o: 他人の関係 ／ Esc: 終了  ｜ '+NEW_NOTE_RELATIONS.map((r,i)=>'['+((i+1)%10)+']'+r).join(' ');
+    legend.textContent='数字: 行を選択 ／ a: 全選択 ／ s: 解除 ／ r→数字: 関係を一括変更 ／ t→数字: 属性を一括変更 ／ d: 削除 ／ e: 展開 ／ o: 他人の関係 ／ Esc: 終了  ｜ '+NEW_NOTE_RELATIONS.map((r,i)=>'['+((i+1)%10)+']'+r).join(' ');
     zone.appendChild(legend);
   }
   const edges=rawEdges.filter(e=>showOtherEdgeNodes[direction]||ownEdge(e));
@@ -1421,7 +1433,8 @@ function renderEdgeZone(root,direction){
   if(!groups.length){const em=document.createElement('div');em.className='edgeEmpty';em.textContent=rawEdges.length?'他の人のノードは非表示です':'エッジ関係はまだありません';zone.appendChild(em)}
   for(const [relation,itemsRaw] of groups){
     const block=document.createElement('section');block.className='previewSection edgeGroup';block.dataset.headingLevel='2';
-    const head=document.createElement('div');head.className='sectionHead';const hd=document.createElement('div');hd.className='heading';hd.innerHTML='<h2>'+escapeHtml(relation)+'</h2>';head.appendChild(hd);
+    const head=document.createElement('div');head.className='sectionHead';const hd=document.createElement('div');hd.className='heading';const rcol=relColor(relation);
+    hd.innerHTML='<h2'+(rcol?' style="border-bottom:2px solid '+rcol+'"':'')+'>'+(rcol?'<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:'+rcol+';margin-right:6px;vertical-align:middle"></span>':'')+escapeHtml(relation)+'</h2>';head.appendChild(hd);
     const key=direction+'\u0000'+relation;
     if(itemsRaw.length>=2&&!edgeEditMode[direction]){const sel=document.createElement('select');sel.className='sectionSort';sel.tabIndex=-1;const isTopic=relIs(relation,'カテゴリー');const opts=isTopic?[['source','記載順'],['nodes','ノード数'],['newest','新しい順'],['oldest','古い順'],['name','名前順']]:[['source','記載順'],['nodes','ノード数'],['support','賛同数'],['oppose','否定数'],['newest','新しい順'],['oldest','古い順'],['name','名前順']];for(const [v,t] of opts){const o=document.createElement('option');o.value=v;o.textContent=t;sel.appendChild(o)}sel.value=sectionSort.get(key)||'source';sel.onchange=e=>{sectionSort.set(key,e.currentTarget.value);renderEditEdges();if(mode==='organize')renderOrganize()};head.appendChild(sel)}
     block.appendChild(head);
@@ -1436,7 +1449,7 @@ function renderEdgeZone(root,direction){
       const editable=canEditEdgeItem(direction,li),d=document.createElement('div');d.className='previewLink'+(edgeEditMode[direction]?' edgeEditing':'')+(!editable&&edgeEditMode[direction]?' edgeNotEditable':'');
       const stats=edgeStatsHtml(li,relation,direction);
       if(edgeEditMode[direction]&&editable){const ek=edgeKey(relation,li.file)+(li.edge_kind==='external'?'\u0000ext:'+String(li.edge_id||''):'');edgeEditOrder[direction].push(ek);const num=edgeEditOrder[direction].length;const badge=document.createElement('span');badge.className='edgeNumBadge';badge.textContent=String(num%10);badge.style.cssText='display:inline-block;min-width:1.3em;text-align:center;font-size:10px;font-weight:800;border:1px solid var(--border);border-radius:4px;padding:0 3px;margin-right:3px;color:var(--muted)';d.appendChild(badge);d.dataset.edgeNum=String(num);const cb=document.createElement('input');cb.type='checkbox';cb.className='edgeSelect';cb.tabIndex=-1;cb.checked=selectedEdgeKeys[direction].has(ek);cb.onchange=()=>{if(cb.checked)selectedEdgeKeys[direction].add(ek);else selectedEdgeKeys[direction].delete(ek);d.classList.toggle('edgeRowSelected',cb.checked);updateEdgeDeleteButton(direction,zone)};if(cb.checked)d.classList.add('edgeRowSelected');d.appendChild(cb)}
-      const content=document.createElement('div');content.style.display='contents';content.innerHTML=authorMiniHtml(authorFor(li.file))+'<a href="#" data-file="'+escapeHtml(li.file)+'">'+escapeHtml(li.label)+'</a>'+(li.edge_kind==='external'?'<span class="edgeOwnerBadge">追加 @'+escapeHtml(li.edge_creator_username||'')+'</span>':'')+(stats?'<span class="metrics">'+stats+'</span>':'');d.appendChild(content);
+      const content=document.createElement('div');content.style.display='contents';content.innerHTML=authorMiniHtml(authorFor(li.file))+'<a href="#" data-file="'+escapeHtml(li.file)+'">'+escapeHtml(li.label)+'</a>'+typeMiniHtml(li.node_type)+(li.edge_kind==='external'?'<span class="edgeOwnerBadge">追加 @'+escapeHtml(li.edge_creator_username||'')+'</span>':'')+(stats?'<span class="metrics">'+stats+'</span>':'');d.appendChild(content);
       if(profile?.local_mode&&editable&&li.edge_kind!=='external'){const lock=document.createElement('button');lock.type='button';lock.tabIndex=-1;lock.className='edgePrivacyBtn'+(li.private?' private':'');lock.textContent=li.private?'非公開':'公開';lock.title='この関係をWebに表示するか';const sourceNote=outgoing?current:li.file,targetNote=outgoing?li.file:current;lock.onclick=e=>{e.preventDefault();e.stopPropagation();toggleEdgePrivacy(sourceNote,targetNote,!li.private)};d.appendChild(lock)}
       list.appendChild(d);
     }
@@ -1509,37 +1522,43 @@ function renderBodyPreview(root,text){
 }
 // A node's own kind comes only from YAML node_type; it is never inferred from
 // relations. An unspecified note reads as "ノード".
-function nodeTypeLabel(v){return String(v||'')||'ノード'}
+function nodeTypeLabel(v){return String(v||'').trim()||'ノード'}
 const NODE_TYPE_OPTIONS=[['論点','論点'],['見解','見解'],['支持','支持'],['反対','反対'],['補足','補足'],['まとめ','まとめ'],['カテゴリー','カテゴリー'],['','ノード']];
-async function saveNodeType(v){
+// Standard relation / attribute colours (from the project's colour table).
+const TYPE_COLORS={'論点':'#FFB597','見解':'#59C6EF','支持':'#98CE71','反対':'#EF597B','補足':'#9FDEF6','関連':'#B8BDC6','まとめ':'#C6A5E8','カテゴリー':'#B8C98B'};
+function typeColor(v){return TYPE_COLORS[String(v||'').trim()]||''}
+function relColor(r){
+  const c=relationClass(r);
+  return ({support:'#98CE71',oppose:'#EF597B',question:'#FFB597',answer:'#59C6EF',related:'#B8BDC6',topic:'#B8C98B',note:'#B8BDC6'}[c])||typeColor(r)||'';
+}
+// "node_type:" in a muted label, then the value in its colour.
+function typeBadgeHtml(v){
+  const col=typeColor(v)||'#e6e6e6';
+  return '<span style="color:var(--muted);font-size:10px;font-weight:400">node_type:</span> '
+       +'<span style="background:'+col+';color:#1a1a1a;border-radius:4px;padding:1px 7px;font-weight:700;font-size:12px">'+escapeHtml(nodeTypeLabel(v))+'</span>';
+}
+function typeMiniHtml(v){
+  const col=typeColor(v)||'#e9e9e9';
+  return '<span class="typeMini" style="background:'+col+';color:#1a1a1a;border-radius:3px;padding:0 5px;font-size:10px;font-weight:700;margin-left:5px">'+escapeHtml(nodeTypeLabel(v))+'</span>';
+}
+async function saveNodeType(v,names){
   try{
-    const d=await api('/api/node-type',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:current,node_type:v})});
-    currentData=d;setEditorsFromRaw(d.content);dirty=false;renderEditEdges();if(mode==='organize')renderOrganize();
-    status('属性を「'+nodeTypeLabel(v)+'」にしました');
+    const body=names&&names.length?{names,node_type:v,current}:{name:current,node_type:v,current};
+    const d=await api('/api/node-type',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(d&&d.content){currentData=d;setEditorsFromRaw(d.content);dirty=false}
+    else if(current){currentData=await api('/api/file?name='+encodeURIComponent(current))}
+    renderEditEdges();if(mode==='organize')renderOrganize();await refreshFiles();queueGraph();
+    status((d&&d.changed>1)?(d.changed+'件の属性を「'+nodeTypeLabel(v)+'」にしました'):('属性を「'+nodeTypeLabel(v)+'」にしました'));
   }catch(e){status(e.message)}
 }
 function renderNodeTypeRow(root,{hint=false}={}){
   if(!currentData||currentData.is_index)return;
   const row=document.createElement('div');row.className='nodeTypeRow';
-  row.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;font-size:12px';
-  const lab=document.createElement('label');lab.className='nodeTypePick';lab.style.cssText='display:flex;align-items:center;gap:6px;font-weight:750';
-  lab.appendChild(document.createTextNode('属性'));
-  if(currentData.can_edit){
-    const sel=document.createElement('select');sel.style.cssText='font-size:12px;padding:2px 5px';
-    const cur=currentData.node_type||'';
-    const opts=NODE_TYPE_OPTIONS.slice();
-    if(cur&&!opts.some(o=>o[0]===cur))opts.splice(opts.length-1,0,[cur,cur]);
-    for(const [val,txt] of opts){const o=document.createElement('option');o.value=val;o.textContent=txt;sel.appendChild(o)}
-    sel.value=cur;
-    sel.onchange=()=>saveNodeType(sel.value);
-    lab.appendChild(sel);
-  }else{
-    const span=document.createElement('span');span.style.fontWeight='400';span.textContent=nodeTypeLabel(currentData.node_type);lab.appendChild(span);
-  }
-  row.appendChild(lab);
+  row.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px;font-size:12px';
+  const lab=document.createElement('span');lab.innerHTML=typeBadgeHtml(currentData.node_type);row.appendChild(lab);
   if(hint&&currentData.can_edit){
     const h=document.createElement('span');h.style.cssText='color:var(--muted);font-weight:400;font-size:11px';
-    h.textContent='キー: t=属性 ／ p=Parent追加 ／ c=Child追加 ／ P・C=関係を編集（数字で複数選択→r+数字で関係変更・d削除）';
+    h.textContent='t → 数字 : 属性を変更 ／ p 親追加 ／ c 子追加 ／ P・C 関係編集（t/r → 数字で一括）';
     row.appendChild(h);
   }
   root.appendChild(row);
@@ -2006,6 +2025,24 @@ async function toggleTaskByOrdinal(ord){
 function toggleTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(!taskLineInfo(line)){status('この行はチェックボックスではありません');return false}cm.replaceRange(line.replace(/\[([ xX])\]/,m=>/x/i.test(m)?'[ ]':'[x]'),{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(cur.ch,cm.getLine(cur.line).length)});return true}
 function makeTaskAtCursor(cm){const cur=cm.getCursor(),line=cm.getLine(cur.line)||'';if(taskLineInfo(line)){status('すでにチェックボックスです');return}let next;if(!line.trim())next='- [ ] ';else if(/^\s*[-*+]\s+/.test(line))next=line.replace(/^(\s*[-*+]\s+)/,'$1[ ] ');else next='- [ ] '+line;cm.replaceRange(next,{line:cur.line,ch:0},{line:cur.line,ch:line.length},'+vim');cm.setCursor({line:cur.line,ch:Math.min(next.length,Math.max(6,cur.ch+6))})}
 function insertMarkdownTable(cm){const cur=cm.getCursor();const before=(cm.getLine(cur.line)||'').trim()?'\n':'';const md=before+'| 列1 | 列2 |\n| --- | --- |\n|  |  |';cm.replaceSelection(md,'end','+table');const pos=cm.getCursor();cm.setCursor({line:Math.max(0,pos.line),ch:2})}
+// nt = retype the # title from scratch (overwrite). nT = edit the existing one.
+// Only ever touches the first `# ` line.
+function editSourceTitle(cm,blank){
+  if(!currentData||!currentData.can_edit){status('自分のノートのみ編集できます');return}
+  let ln=-1,prefix='# ';
+  for(let i=0;i<cm.lineCount();i++){const m=/^(#\s+)(.*)$/.exec(cm.getLine(i)||'');if(m){ln=i;prefix=m[1];break}}
+  if(ln<0){status('タイトル行（# ）が見つかりません');return}
+  const line=cm.getLine(ln)||'';
+  if(blank){
+    cm.replaceRange(prefix,{line:ln,ch:0},{line:ln,ch:line.length},'+vim');
+    cm.setCursor({line:ln,ch:prefix.length});
+  }else{
+    cm.setCursor({line:ln,ch:line.length});
+  }
+  try{cm.scrollIntoView({line:ln,ch:0},80)}catch(_){}
+  try{CodeMirror.Vim.handleKey(cm,'a')}catch(_){}
+  dirty=true;queueAutosave(400);
+}
 // ---- Custom NORMAL-mode commands on the vim keymap ----
 // Direct keys for link navigation (these match the pre-addon layer):
 //   Enter = open the link under the cursor (else move down a line)
@@ -2046,10 +2083,29 @@ function setupVimSystemClipboard(){
     return true;
   };
   const pasteFromClipboard=async key=>{await seedFromClipboard(true);try{CodeMirror.Vim.handleKey(editor,key)}catch(_){}};
+  // `n` is Vim's search-next and always fires alone, so a genuine `nt`/`nT`
+  // sequence needs a tiny buffer: hold `n`, and if `t`/`T` follows quickly run
+  // the title command, otherwise replay the `n` (and the following key).
+  let nPending=null;
+  const flushN=next=>{
+    if(nPending){clearTimeout(nPending);nPending=null}
+    try{CodeMirror.Vim.handleKey(editor,'n')}catch(_){}
+    if(next){try{CodeMirror.Vim.handleKey(editor,next)}catch(_){}}
+  };
   editor.on('keydown',(inst,e)=>{
     const v=inst.state.vim;
-    if(!v||v.insertMode||e.ctrlKey||e.metaKey||e.altKey)return;
-    if(e.key==='p'||e.key==='P'){e.preventDefault();pasteFromClipboard(e.key)}
+    if(!v||v.insertMode||e.ctrlKey||e.metaKey||e.altKey){if(nPending)flushN();return}
+    if(e.key==='p'||e.key==='P'){e.preventDefault();pasteFromClipboard(e.key);return}
+    if(nPending){
+      e.preventDefault();
+      if(e.key==='t'||e.key==='T'){clearTimeout(nPending);nPending=null;editSourceTitle(inst,e.key==='t');return}
+      flushN(e.key.length===1?e.key:'');
+      return;
+    }
+    if(e.key==='n'&&currentData&&currentData.can_edit){
+      e.preventDefault();
+      nPending=setTimeout(()=>{nPending=null;try{CodeMirror.Vim.handleKey(editor,'n')}catch(_){}},400);
+    }
   });
   // Also refresh the register whenever focus returns, covering the common
   // "copied in another app, come back, press p" case.
@@ -2136,13 +2192,15 @@ window.addEventListener('keydown',e=>{
       e.preventDefault();
       const num=e.key==='0'?10:Number(e.key);
       if(orgKeyPrefix==='r'){orgKeyPrefix='';const rel=NEW_NOTE_RELATIONS[num-1];if(rel)relabelSelectedEdges(editDir,rel);return}
+      if(orgKeyPrefix==='t'){orgKeyPrefix='';const opt=NODE_TYPE_OPTIONS[num-1];if(opt)bulkAttrSelectedEdges(editDir,opt[0]);return}
       const ek=edgeEditOrder[editDir][num-1];
       if(ek){const set=selectedEdgeKeys[editDir];set.has(ek)?set.delete(ek):set.add(ek);renderOrganize()}
       return;
     }
     if(e.key==='a'){e.preventDefault();selectedEdgeKeys[editDir]=new Set(edgeEditOrder[editDir]);orgKeyPrefix='';renderOrganize();return}
     if(e.key==='s'){e.preventDefault();selectedEdgeKeys[editDir].clear();orgKeyPrefix='';renderOrganize();return}
-    if(e.key==='r'){e.preventDefault();orgKeyPrefix=orgKeyPrefix==='r'?'':'r';status(orgKeyPrefix==='r'?'関係の番号を押してください（1=論点 … 0=無記）':'');return}
+    if(e.key==='r'){e.preventDefault();orgKeyPrefix=orgKeyPrefix==='r'?'':'r';status(orgKeyPrefix==='r'?'関係の番号：1=論点 2=見解 3=支持 4=反対 5=補足 6=まとめ 7=カテゴリー 8=関連 9=分割':'');return}
+    if(e.key==='t'){e.preventDefault();orgKeyPrefix=orgKeyPrefix==='t'?'':'t';status(orgKeyPrefix==='t'?'属性の番号：1=論点 2=見解 3=支持 4=反対 5=補足 6=まとめ 7=カテゴリー 8=ノード':'');return}
     if(e.key==='d'||e.key==='Delete'){e.preventDefault();orgKeyPrefix='';deleteSelectedEdges(editDir);return}
     if(e.key==='e'){e.preventDefault();edgeExpandAll[editDir]=!edgeExpandAll[editDir];if(!edgeExpandAll[editDir])edgeExpandedGroups[editDir].clear();renderOrganize();return}
     if(e.key==='o'){e.preventDefault();showOtherEdgeNodes[editDir]=!showOtherEdgeNodes[editDir];localStorage.setItem(editDir==='outgoing'?'nnShowOtherOutgoing':'nnShowOtherIncoming',showOtherEdgeNodes[editDir]?'1':'0');renderOrganize();return}
@@ -2232,7 +2290,7 @@ const RELATION_CHOICES=[
   {value:'論点',label:'論点'},{value:'見解',label:'見解'},{value:'支持',label:'支持'},
   {value:'反対',label:'反対'},{value:'補足',label:'補足'},{value:'まとめ',label:'まとめ'},
   {value:'カテゴリー',label:'カテゴリー'},{value:'関連',label:'関連'},{value:'分割',label:'分割'},
-  {value:'',label:'選択しない（ノード）'},{value:'__custom__',label:'その他（自由入力）'},
+  {value:'__custom__',label:'その他（自由入力）'},
 ];
 function choiceLabel(choices,v){const c=choices.find(x=>x.value===v);return c?c.label:(v||'選択しない（ノード）')}
 // --- new-note dialog: 属性 mirrors into 関係 until the user picks a relation ---
@@ -2249,8 +2307,9 @@ function setNewNodeType(v){
   // The relation auto-mirrors the attribute (value + free-text) until the user
   // picks a relation themselves; after that it is left alone.
   if(!newRelationTouched){
-    newRelationVal=v;
-    if(v==='__custom__')$('customRelation').value=$('newNodeTypeCustom').value;
+    // Relation can't be "none": if 属性 is 選択しない, leave the relation as-is.
+    if(v==='__custom__'){newRelationVal='__custom__';$('customRelation').value=$('newNodeTypeCustom').value}
+    else if(v)newRelationVal=v;
   }
   if(v==='__custom__'){updateNewCombos();dlgSetMode('insert',$('newNodeTypeCustom'));return}
   updateNewCombos();
@@ -2283,7 +2342,7 @@ function openNewNodeDialog(){
   if(!currentData?.can_edit){status('新しいノードは自分のノートから作成してください');return}
   $('newTitle').value='';$('customRelation').value='';$('newNodeTypeCustom').value='';
   newNodeTypeVal='';newRelationTouched=false;
-  newRelationVal=(currentData&&currentData.node_type==='カテゴリー')?'カテゴリー':'';
+  newRelationVal=(currentData&&currentData.node_type==='カテゴリー')?'カテゴリー':'関連';
   updateNewCombos();
   $('newDialog').showModal();
   setTimeout(()=>dlgSetMode('normal'),0);
@@ -2347,7 +2406,7 @@ function updateEdgeCombo(){
   $('edgeCustomWrap').style.display=edgeRelationVal==='__custom__'?'grid':'none';
 }
 function setEdgeRelation(v){edgeRelationVal=v;if(v==='__custom__'){updateEdgeCombo();dlgSetMode('insert',$('edgeCustomRelation'));return}updateEdgeCombo()}
-function currentEdgeRelation(){return edgeRelationVal==='__custom__'?$('edgeCustomRelation').value.trim():(edgeRelationVal||'ノード')}
+function currentEdgeRelation(){return edgeRelationVal==='__custom__'?$('edgeCustomRelation').value.trim():(edgeRelationVal||'関連')}
 $('edgeRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:RELATION_CHOICES,current:edgeRelationVal,onPick:setEdgeRelation});
 $('edgeCustomRelation').addEventListener('input',updateEdgeCombo);
 // ---- Note search palette: pop up anywhere, keyboard-only, jump to a note.
@@ -2419,6 +2478,7 @@ const SHORTCUTS_HTML=[
   '? : このヘルプ',
   '',
   '<b>ソース NORMAL</b>',
+  'nt : タイトルを書き直す（空から）／ nT : タイトルを末尾から編集',
   '\\n 作成 ／ \\p 親 ／ \\c 子 ／ \\e 分類 ／ \\y リンク',
   '\\a 添付 ／ \\t ☑ ／ \\T 表 ／ \\d 削除 ／ \\f 検索',
   '',
@@ -3005,7 +3065,7 @@ $('graphRelationLabels').checked=graphShowRelationLabels;$('graphRelationLabelsV
 function updateGraphControlsVisibility(){const box=$('graphControls'),btn=$('graphControlsToggle');if(!box||!btn)return;box.classList.toggle('collapsed',graphControlsCollapsed);btn.textContent=graphControlsCollapsed?'パラメータを表示':'隠す';btn.setAttribute('aria-expanded',graphControlsCollapsed?'false':'true')}
 $('graphControlsToggle').onclick=()=>{graphControlsCollapsed=!graphControlsCollapsed;localStorage.setItem('nnGraphControlsCollapsed',graphControlsCollapsed?'1':'0');updateGraphControlsVisibility();setTimeout(()=>queueGraph(80),0)};updateGraphControlsVisibility();
 new ResizeObserver(()=>queueGraph(120)).observe($('graphWrap'));
-$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();if(!title){dlgSetMode('insert',$('newTitle'));status('タイトルを入力してください');return}const node_type=newNodeTypeVal==='__custom__'?$('newNodeTypeCustom').value.trim():newNodeTypeVal;let relation=newRelationVal==='__custom__'?$('customRelation').value.trim():newRelationVal;if(!relation)relation='ノード';if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
+$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();if(!title){dlgSetMode('insert',$('newTitle'));status('タイトルを入力してください');return}const node_type=newNodeTypeVal==='__custom__'?$('newNodeTypeCustom').value.trim():newNodeTypeVal;let relation=newRelationVal==='__custom__'?$('customRelation').value.trim():newRelationVal;if(!relation)relation='関連';if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
 window.addEventListener('beforeunload',()=>{if(!isGuest()&&(dirty||relationSyncPending)){const blob=new Blob([JSON.stringify({name:current,content:editorText(),voter:voterId,commit_relations:true,client_save_session:saveClientSession,client_seq:editRevision})],{type:'application/json'});navigator.sendBeacon('/api/file',blob)}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flushAutosave().catch(()=>{})});
 boot().catch(e=>{status(e.message,{kind:'error'});if(!runtimeLocalMode)showAuth(e.message)});
@@ -3372,7 +3432,7 @@ def normalized_node_type(value: str) -> str:
     hand-edited value can never break Markdown parsing.
     """
     v = str(value or "").replace("\n", " ").strip().strip('"\'')
-    if v in ("", "指定なし", "指定しない", "選択しない", "なし", "none", "unspecified"):
+    if v.lower() in ("", "null", "~", "指定なし", "指定しない", "選択しない", "なし", "none", "unspecified"):
         return ""
     return v[:60]
 
@@ -3390,29 +3450,24 @@ def node_type_of(content: str) -> str:
 
 
 def set_node_type_frontmatter(content: str, value: str) -> str:
-    """Insert, replace or remove the ``node_type`` line inside YAML frontmatter.
+    """Insert or replace the ``node_type`` line inside YAML frontmatter.
 
-    ``creator``/``created``/``updated`` are never touched. An empty or
-    unspecified value removes the line entirely instead of writing
-    ``node_type: 指定なし``. Notes without frontmatter are returned unchanged.
+    ``creator``/``created``/``updated`` are never touched. An unspecified value
+    is written as ``node_type: null`` (kept, not deleted). Notes without
+    frontmatter are returned unchanged.
     """
-    desired = normalized_node_type(value)
+    desired = normalized_node_type(value) or "null"
     frontmatter, body = split_yaml_frontmatter(content)
     if not frontmatter:
         return content
     lines = frontmatter.splitlines()
     idx = next((i for i in range(1, len(lines) - 1)
                 if NODE_TYPE_LINE_RE.match(lines[i])), None)
-    if desired:
-        new_line = f"node_type: {desired}"
-        if idx is not None:
-            lines[idx] = new_line
-        else:
-            lines.insert(len(lines) - 1, new_line)
-    elif idx is not None:
-        del lines[idx]
+    new_line = f"node_type: {desired}"
+    if idx is not None:
+        lines[idx] = new_line
     else:
-        return content
+        lines.insert(len(lines) - 1, new_line)
     return "\n".join(lines).rstrip() + "\n\n" + body.lstrip("\n")
 
 
@@ -3892,9 +3947,8 @@ def migrate_created_frontmatter_to_iso_offset() -> None:
 def new_note_markdown(filename: str, title: str, node_type: str = "") -> str:
     created = local_now_iso()
     creator = inferred_creator_username(filename)
-    nt = normalized_node_type(node_type)
-    nt_line = f"node_type: {nt}\n" if nt else ""
-    return f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\n{nt_line}---\n\n# {title}\n"
+    nt = normalized_node_type(node_type) or "null"
+    return f"---\ncreator::{creator}\ncreated: {created}\nupdated: {created}\nnode_type: {nt}\n---\n\n# {title}\n"
 
 
 def new_timestamp_filename() -> str:
@@ -4276,14 +4330,14 @@ def file_payload(name: str, voter: str | None = None):
     outgoing = []
     for relation, label, target in parse_outgoing(content):
         if target in contents:
-            outgoing.append({"relation": relation, "title": title_of(contents[target], target) or label, "file": target, "edge_kind":"owner", "owner_set":True, "edge_creator_id":file_owner_id(name), "edge_creator_username":username_for_user_id(file_owner_id(name)) if file_owner_id(name) else ""})
+            outgoing.append({"relation": relation, "title": title_of(contents[target], target) or label, "file": target, "node_type": node_type_of(contents[target]), "edge_kind":"owner", "owner_set":True, "edge_creator_id":file_owner_id(name), "edge_creator_username":username_for_user_id(file_owner_id(name)) if file_owner_id(name) else ""})
     incoming = []
     for source in files:
         if source == name:
             continue
         for relation, _label, target in parse_outgoing(contents[source]):
             if target == name:
-                incoming.append({"relation": relation, "title": title_of(contents[source], source), "file": source, "edge_kind":"owner", "owner_set":True, "edge_creator_id":file_owner_id(source), "edge_creator_username":username_for_user_id(file_owner_id(source)) if file_owner_id(source) else ""})
+                incoming.append({"relation": relation, "title": title_of(contents[source], source), "file": source, "node_type": node_type_of(contents[source]), "edge_kind":"owner", "owner_set":True, "edge_creator_id":file_owner_id(source), "edge_creator_username":username_for_user_id(file_owner_id(source)) if file_owner_id(source) else ""})
     topic_norm = {normalized_relation(x) for x in {"カテゴリー", "トピック", "topic", "topics"}}
     is_topic = any(normalized_relation(e["relation"]) in topic_norm for e in incoming)
     topic_edge_ratings = {}
@@ -7463,18 +7517,35 @@ class Handler(BaseHTTPRequestHandler):
                 schedule_local_publish(uid)
                 return self.json_response(sns_file_payload(current_name, uid, f"user:{uid}"))
             if u.path == "/api/node-type":
-                name = safe_name(body.get("name", ""))
-                if not (VAULT / name).exists():
-                    raise ValueError("ノートが見つかりません")
-                if not can_edit_note(uid, name):
-                    raise PermissionError("このノートの属性は変更できません")
-                # 指定なし / unknown values clear the line; creator/created/updated
-                # are never touched. node_type is independent from relations.
-                new_content = set_node_type_frontmatter(read_file(name), body.get("node_type", ""))
-                enforce_note_write_quota(uid, name, new_content)
-                write_file(name, new_content)
+                raw_names = body.get("names")
+                targets = [str(x) for x in raw_names] if isinstance(raw_names, list) else [body.get("name", "")]
+                value = body.get("node_type", "")
+                nt = normalized_node_type(value)
+                changed = 0
+                first = ""
+                for raw in targets:
+                    try:
+                        nm = safe_name(raw)
+                    except ValueError:
+                        continue
+                    if not (VAULT / nm).exists() or not can_edit_note(uid, nm):
+                        continue
+                    # A note's own kind. Unspecified is written as node_type: null;
+                    # creator/created/updated are never touched.
+                    new_content = set_node_type_frontmatter(read_file(nm), value)
+                    enforce_note_write_quota(uid, nm, new_content)
+                    write_file(nm, new_content)
+                    changed += 1
+                    first = first or nm
                 sync_edges(); schedule_local_publish(uid)
-                return self.json_response(sns_file_payload(name, uid, f"user:{uid}"))
+                current_name = safe_name(body.get("current", "")) if body.get("current") else (first or (targets[0] if targets else ""))
+                try:
+                    payload = sns_file_payload(safe_name(current_name), uid, f"user:{uid}") if current_name else {}
+                except Exception:
+                    payload = {}
+                payload["changed"] = changed
+                payload["node_type_applied"] = nt
+                return self.json_response(payload)
             if u.path == "/api/edge-relabel":
                 direction = str(body.get("direction", "outgoing"))
                 current_name = safe_name(body.get("current", index_filename(uid)))
