@@ -2255,15 +2255,15 @@ const NODE_TYPE_CHOICES=[
   {value:'論点',label:'論点'},{value:'見解',label:'見解'},{value:'支持',label:'支持'},
   {value:'反対',label:'反対'},{value:'補足',label:'補足'},{value:'まとめ',label:'まとめ'},
   {value:'カテゴリー',label:'カテゴリー'},
-  {value:'',label:'選択しない'},{value:'__custom__',label:'その他（自由入力）'},
+  {value:'',label:'選択しない（ノード）'},{value:'__custom__',label:'その他（自由入力）'},
 ];
 const RELATION_CHOICES=[
   {value:'論点',label:'論点'},{value:'見解',label:'見解'},{value:'支持',label:'支持'},
   {value:'反対',label:'反対'},{value:'補足',label:'補足'},{value:'まとめ',label:'まとめ'},
   {value:'カテゴリー',label:'カテゴリー'},{value:'関連',label:'関連'},{value:'分割',label:'分割'},
-  {value:'',label:'選択しない'},{value:'__custom__',label:'その他（自由入力）'},
+  {value:'',label:'選択しない（ノード）'},{value:'__custom__',label:'その他（自由入力）'},
 ];
-function choiceLabel(choices,v){const c=choices.find(x=>x.value===v);return c?c.label:(v||'選択しない')}
+function choiceLabel(choices,v){const c=choices.find(x=>x.value===v);return c?c.label:(v||'選択しない（ノード）')}
 // --- new-note dialog: 属性 mirrors into 関係 until the user picks a relation ---
 let newNodeTypeVal='',newRelationVal='',newRelationTouched=false;
 function updateNewCombos(){
@@ -2376,7 +2376,7 @@ function updateEdgeCombo(){
   $('edgeCustomWrap').style.display=edgeRelationVal==='__custom__'?'grid':'none';
 }
 function setEdgeRelation(v){edgeRelationVal=v;if(v==='__custom__'){updateEdgeCombo();dlgSetMode('insert',$('edgeCustomRelation'));return}updateEdgeCombo()}
-function currentEdgeRelation(){return edgeRelationVal==='__custom__'?$('edgeCustomRelation').value.trim():(edgeRelationVal||'選択しない')}
+function currentEdgeRelation(){return edgeRelationVal==='__custom__'?$('edgeCustomRelation').value.trim():(edgeRelationVal||'ノード')}
 $('edgeRelationBtn').onclick=()=>dlgOpenPicker({title:'関係を選択（英数字キー / クリック）',entries:RELATION_CHOICES,current:edgeRelationVal,onPick:setEdgeRelation});
 $('edgeCustomRelation').addEventListener('input',updateEdgeCombo);
 // ---- Note search palette: pop up anywhere, keyboard-only, jump to a note.
@@ -3032,7 +3032,7 @@ $('graphRelationLabels').checked=graphShowRelationLabels;$('graphRelationLabelsV
 function updateGraphControlsVisibility(){const box=$('graphControls'),btn=$('graphControlsToggle');if(!box||!btn)return;box.classList.toggle('collapsed',graphControlsCollapsed);btn.textContent=graphControlsCollapsed?'パラメータを表示':'隠す';btn.setAttribute('aria-expanded',graphControlsCollapsed?'false':'true')}
 $('graphControlsToggle').onclick=()=>{graphControlsCollapsed=!graphControlsCollapsed;localStorage.setItem('nnGraphControlsCollapsed',graphControlsCollapsed?'1':'0');updateGraphControlsVisibility();setTimeout(()=>queueGraph(80),0)};updateGraphControlsVisibility();
 new ResizeObserver(()=>queueGraph(120)).observe($('graphWrap'));
-$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();if(!title){dlgSetMode('insert',$('newTitle'));status('タイトルを入力してください');return}const node_type=newNodeTypeVal==='__custom__'?$('newNodeTypeCustom').value.trim():newNodeTypeVal;let relation=newRelationVal==='__custom__'?$('customRelation').value.trim():newRelationVal;if(!relation)relation='選択しない';if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
+$('newForm').addEventListener('submit',async e=>{e.preventDefault();const title=$('newTitle').value.trim();if(!title){dlgSetMode('insert',$('newTitle'));status('タイトルを入力してください');return}const node_type=newNodeTypeVal==='__custom__'?$('newNodeTypeCustom').value.trim():newNodeTypeVal;let relation=newRelationVal==='__custom__'?$('customRelation').value.trim():newRelationVal;if(!relation)relation='ノード';if(dirty)await flushAutosave();const d=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:current,title,relation,node_type})});$('newDialog').close();await refreshFiles();await openFile(d.file);await switchMode('source');status('ノードを作成しました')});
 window.addEventListener('beforeunload',()=>{if(!isGuest()&&(dirty||relationSyncPending)){const blob=new Blob([JSON.stringify({name:current,content:editorText(),voter:voterId,commit_relations:true,client_save_session:saveClientSession,client_seq:editRevision})],{type:'application/json'});navigator.sendBeacon('/api/file',blob)}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flushAutosave().catch(()=>{})});
 boot().catch(e=>{status(e.message,{kind:'error'});if(!runtimeLocalMode)showAuth(e.message)});

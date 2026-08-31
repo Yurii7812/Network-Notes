@@ -155,8 +155,10 @@ class NodeTypeSpaContractTests(unittest.TestCase):
         self.assertIn('data-vim-dialog', src)
         self.assertIn("function activeVimDialog()", src)
         self.assertIn("function dlgOpenPicker(cfg)", src)
-        # "選択しない" is the second-to-last choice, before free input
-        self.assertIn("{value:'',label:'選択しない'},{value:'__custom__'", src)
+        # "選択しない（ノード）" is the second-to-last choice, before free input;
+        # picking it for the relation writes ノード::
+        self.assertIn("{value:'',label:'選択しない（ノード）'},{value:'__custom__'", src)
+        self.assertIn("if(!relation)relation='ノード';", src)
         # keyboard-only note search palette, opened with Ctrl+K, reused by \\p /\\c
         self.assertIn("function openNotePicker(onPick)", src)
         self.assertIn('id="notePickDialog"', src)
